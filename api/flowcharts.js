@@ -40,7 +40,7 @@ export default async function handler(req, res) {
         const { id } = req.query;
         if (id) {
           const { data, error } = await supabase
-            .from('flowcharts')
+            .from('notes_flowcharts')
             .select('*')
             .eq('id', id)
             .eq('user_id', userId)
@@ -49,7 +49,7 @@ export default async function handler(req, res) {
           return res.status(200).json(data);
         }
         const { data, error } = await supabase
-          .from('flowcharts')
+          .from('notes_flowcharts')
           .select('id, name, updated_at')
           .eq('user_id', userId)
           .order('updated_at', { ascending: false });
