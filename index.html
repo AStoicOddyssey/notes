@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Notes</title>
+<style>
+  :root, html[data-theme="dark"] {
+    --bg: #0d1117; --panel: #161b22; --panel2: #21262d; --border: #30363d;
+    --text: #c9d1d9; --muted: #8b949e; --accent: #58a6ff; --green: #3fb950; --red: #f85149;
+    --shadow: 0 8px 24px rgba(1,4,9,0.6);
+  }
+  html[data-theme="light"] {
+    --bg: #ffffff; --panel: #f6f8fa; --panel2: #eaeef2; --border: #d0d7de;
+    --text: #24292f; --muted: #57606a; --accent: #0969da; --green: #1a7f37; --red: #cf222e;
+    --shadow: 0 8px 24px rgba(140,149,159,0.25);
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg); color: var(--text);
+    font: 14px/1.45 -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .card {
+    width: 340px; max-width: 92vw;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+    padding: 26px; box-shadow: var(--shadow);
+  }
+  h1 { margin: 0 0 4px; font-size: 22px; }
+  .sub { color: var(--muted); font-size: 13px; margin-bottom: 20px; }
+  label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 5px; }
+  input {
+    width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+    padding: 8px 10px; color: var(--text); font: inherit;
+  }
+  input:focus { outline: none; border-color: var(--accent); }
+  .actions { display: flex; gap: 8px; margin-top: 16px; }
+  button {
+    flex: 1; padding: 8px 0; border-radius: 6px; cursor: pointer; font: inherit;
+    background: var(--panel2); border: 1px solid var(--border); color: var(--text);
+  }
+  button:hover { border-color: var(--muted); }
+  button.primary { background: var(--green); border-color: transparent; color: #fff; }
+  #err { color: var(--red); font-size: 13px; margin-top: 12px; min-height: 18px; }
+  .theme-toggle {
+    position: fixed; top: 14px; right: 14px;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 6px;
+    padding: 4px 10px; cursor: pointer; color: var(--text);
+  }
+</style>
+</head>
+<body>
+
+<button class="theme-toggle" id="btnTheme" title="Toggle theme">◐</button>
+
+<div class="card">
+  <h1>Notes</h1>
+  <div class="sub">Flowcharts and more. Pick a username to get going.</div>
+  <label for="username">Username</label>
+  <input id="username" autocomplete="username" spellcheck="false"
+         placeholder="3–30 chars: a-z, 0-9, _ or -" maxlength="30">
+  <div class="actions">
+    <button id="btnLogin">Sign in</button>
+    <button class="primary" id="btnRegister">Create account</button>
+  </div>
+  <div id="err"></div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  var errEl = document.getElementById('err');
+  var userEl = document.getElementById('username');
+
+  function applyTheme(t) {
+    document.documentElement.setAttribute('data-theme', t);
+    localStorage.setItem('fc:theme', t);
+  }
+  applyTheme(localStorage.getItem('fc:theme') || 'dark');
+  document.getElementById('btnTheme').addEventListener('click', function () {
+    applyTheme(document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
+  });
+
+  // already signed in? straight through.
+  fetch('/api/auth?action=me', { credentials: 'same-origin' })
+    .then(function (r) { if (r.ok) location.href = '/flowchart'; });
+
+  function submit(action) {
+    errEl.textContent = '';
+    var username = userEl.value.trim();
+    if (!username) { errEl.textContent = 'Enter a username.'; return; }
+    fetch('/api/auth?action=' + action, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify({ username: username })
+    }).then(function (r) {
+      return r.json().then(function (body) {
+        if (!r.ok) throw new Error(body.error || 'Something went wrong.');
+        location.href = '/flowchart';
+      });
+    }).catch(function (e) {
+      errEl.textContent = e.message;
+    });
+  }
+  document.getElementById('btnLogin').addEventListener('click', function () { submit('login'); });
+  document.getElementById('btnRegister').addEventListener('click', function () { submit('register'); });
+  userEl.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') submit('login'); });
+  userEl.focus();
+})();
+</script>
+</body>
+</html>
