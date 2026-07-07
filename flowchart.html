@@ -838,6 +838,8 @@
 
   wrap.addEventListener('mousedown', function (ev) {
     if (ev.button !== 0 || mode !== 'canvas' || !currentId) return;
+    // let edge clicks pass through to the document click handler
+    if (ev.target.closest('g.edge')) return;
     var portEl = ev.target.closest('.port');
     var nodeEl = ev.target.closest('.node');
 
