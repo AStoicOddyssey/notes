@@ -965,7 +965,7 @@
     render();
     ev.stopPropagation();
   });
-  $('edgeLayer').addEventListener('dblclick', function (ev) {
+  document.addEventListener('dblclick', function (ev) {
     var g = ev.target.closest ? ev.target.closest('g.edge') : null;
     if (!g) return;
     openEdgeModal(g.dataset.id);
