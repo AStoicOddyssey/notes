@@ -953,7 +953,7 @@
   });
 
   // edge selection / editing (event delegation on the SVG group)
-  $('edgeLayer').addEventListener('click', function (ev) {
+  document.addEventListener('click', function (ev) {
     var g = ev.target.closest ? ev.target.closest('g.edge') : null;
     if (!g) return;
     var id = g.dataset.id;
