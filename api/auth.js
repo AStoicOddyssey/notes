@@ -75,7 +75,7 @@ export default async function handler(req, res) {
 
     if (action === 'register') {
       const { data, error } = await supabase
-        .from('users')
+        .from('notes_users')
         .insert({ username })
         .select()
         .single();
@@ -91,7 +91,7 @@ export default async function handler(req, res) {
 
     if (action === 'login') {
       const { data, error } = await supabase
-        .from('users')
+        .from('notes_users')
         .select('*')
         .eq('username', username)
         .single();
