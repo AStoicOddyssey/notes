@@ -596,6 +596,7 @@
       if (!geo) return;
       var g = document.createElementNS(SVGNS, 'g');
       g.setAttribute('class', 'edge' + (sel.edges.has(e.id) ? ' selected' : ''));
+      g.style.pointerEvents = 'all';
       g.dataset.id = e.id;
 
       var hit = document.createElementNS(SVGNS, 'path');
