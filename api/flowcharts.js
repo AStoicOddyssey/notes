@@ -60,7 +60,7 @@ export default async function handler(req, res) {
       case 'POST': {
         const { name } = req.body || {};
         const { data, error } = await supabase
-          .from('flowcharts')
+          .from('notes_flowcharts')
           .insert({
             user_id: userId,
             name: (name && String(name).trim()) || 'Untitled chart',
@@ -86,7 +86,7 @@ export default async function handler(req, res) {
         }
 
         const { data, error } = await supabase
-          .from('flowcharts')
+          .from('notes_flowcharts')
           .update(patch)
           .eq('id', id)
           .eq('user_id', userId)
@@ -100,7 +100,7 @@ export default async function handler(req, res) {
         const { id } = req.query;
         if (!id) return res.status(400).json({ error: 'id required' });
         const { error } = await supabase
-          .from('flowcharts')
+          .from('notes_flowcharts')
           .delete()
           .eq('id', id)
           .eq('user_id', userId);
