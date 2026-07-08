@@ -146,9 +146,14 @@
   }
   .port:hover { border-color: var(--accent); background: var(--accent); }
 
-  .edge-path { fill: none; stroke: var(--muted); stroke-width: 1.6; }
+  .edge-path { fill: none; stroke: var(--muted); stroke-width: 1.6; pointer-events: none; }
   .edge-hit  { fill: none; stroke: transparent; stroke-width: 14; cursor: pointer; pointer-events: visibleStroke; }
   .edge.selected .edge-path { stroke: var(--accent); stroke-width: 2.2; }
+  .edge.hl-down .edge-path  { stroke: #f85149; stroke-width: 2; }
+  .edge.hl-up   .edge-path  { stroke: #58a6ff; stroke-width: 2; }
+  .node.hl-selected { outline: 2px solid #3fb950 !important; outline-offset: 1px; }
+  .node.hl-ancestor { outline: 2px solid #58a6ff !important; outline-offset: 1px; }
+  .node.hl-descendant { outline: 2px solid #f85149 !important; outline-offset: 1px; }
   .edge-label {
     font-size: 11px; fill: var(--text);
   }
@@ -421,6 +426,7 @@
   var graph = { nodes: [], edges: [], types: [] };
   var view = { x: 0, y: 0, scale: 1 };
   var sel = { nodes: new Set(), edges: new Set() };
+  var hl = null;
   var undoStack = [], redoStack = [];
   var sizes = {};               // nodeId -> {w,h}
   var dirty = false, saveTimer = null, saving = false, resaveNeeded = false;
@@ -444,6 +450,26 @@
     var t = types.find(function(t){ return t.id === typeId; });
     return t ? t.name : (typeId || 'Untyped');
   }
+  function computeHighlights(nodeId) {
+    var ancestors = new Set(), descendants = new Set();
+    var queue, visited, v;
+    queue = [nodeId]; visited = new Set([nodeId]);
+    while (queue.length) {
+      v = queue.shift();
+      graph.edges.forEach(function(e) {
+        if (e.from === v && !visited.has(e.to)) { visited.add(e.to); descendants.add(e.to); queue.push(e.to); }
+      });
+    }
+    queue = [nodeId]; visited = new Set([nodeId]);
+    while (queue.length) {
+      v = queue.shift();
+      graph.edges.forEach(function(e) {
+        if (e.to === v && !visited.has(e.from)) { visited.add(e.from); ancestors.add(e.from); queue.push(e.from); }
+      });
+    }
+    return { ancestors: ancestors, descendants: descendants };
+  }
+
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
       return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
@@ -572,7 +598,13 @@
     graph.nodes.forEach(function (n) {
       var el = document.createElement('div');
       var ntype = (graph.types || []).find(function(t){ return t.id === n.type; });
-      el.className = 'node' + (sel.nodes.has(n.id) ? ' selected' : '');
+      var hlClass = '';
+      if (hl) {
+        if (n.id === hl.id) hlClass = ' hl-selected';
+        else if (hl.ancestors.has(n.id)) hlClass = ' hl-ancestor';
+        else if (hl.descendants.has(n.id)) hlClass = ' hl-descendant';
+      }
+      el.className = 'node' + (sel.nodes.has(n.id) ? ' selected' : '') + hlClass;
       el.dataset.id = n.id;
       el.style.left = n.x + 'px';
       el.style.top = n.y + 'px';
@@ -647,7 +679,12 @@
       var geo = edgeGeometry(e);
       if (!geo) return;
       var g = document.createElementNS(SVGNS, 'g');
-      g.setAttribute('class', 'edge' + (sel.edges.has(e.id) ? ' selected' : ''));
+      var edgeHlClass = '';
+      if (hl) {
+        if (e.from === hl.id || hl.descendants.has(e.from)) edgeHlClass = ' hl-down';
+        else if (e.to === hl.id || hl.ancestors.has(e.to)) edgeHlClass = ' hl-up';
+      }
+      g.setAttribute('class', 'edge' + (sel.edges.has(e.id) ? ' selected' : '') + edgeHlClass);
       g.dataset.id = e.id;
 
       var hit = document.createElementNS(SVGNS, 'path');
@@ -939,7 +976,8 @@
         render();
         return;
       }
-      if (!sel.nodes.has(id)) { sel.nodes = new Set([id]); sel.edges.clear(); render(); }
+      if (!sel.nodes.has(id)) { sel.nodes = new Set([id]); sel.edges.clear(); hl = Object.assign({ id: id }, computeHighlights(id)); render(); }
+      else { hl = Object.assign({ id: id }, computeHighlights(id)); }
       var start = toWorld(ev.clientX, ev.clientY);
       var origins = {};
       sel.nodes.forEach(function (nid) { var n = getNode(nid); origins[nid] = { x: n.x, y: n.y }; });
@@ -1002,7 +1040,7 @@
     var d = drag; drag = null;
     wrap.classList.remove('panning');
     if (d.kind === 'pan') {
-      if (!d.moved && mode === 'canvas') { sel.nodes.clear(); sel.edges.clear(); render(); }
+      if (!d.moved && mode === 'canvas') { sel.nodes.clear(); sel.edges.clear(); hl = null; render(); }
     } else if (d.kind === 'node') {
       if (d.moved) {
         undoStack.push(d.snapshot);
@@ -1086,7 +1124,7 @@
     if (ev.key === 'Escape') {
       if (!overlay.hidden) { closeModal(); return; }
       if (drag && drag.kind === 'link') { tempEdge.hidden = true; drag = null; return; }
-      sel.nodes.clear(); sel.edges.clear(); render();
+      sel.nodes.clear(); sel.edges.clear(); hl = null; render();
       return;
     }
     if (typing || !overlay.hidden) return;
