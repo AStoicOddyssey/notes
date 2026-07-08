@@ -439,6 +439,10 @@
   function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
   function deepCopy(o) { return JSON.parse(JSON.stringify(o)); }
   function getNode(id) { return graph.nodes.find(function (n) { return n.id === id; }); }
+  function getTypeName(typeId) {
+    var t = graph.types.find(function(t){ return t.id === typeId; });
+    return t ? t.name : (typeId || 'Untyped');
+  }
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
       return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
@@ -1126,7 +1130,7 @@
       return lbl +
         '<span class="t-dot type-' + n.type + '"></span>' +
         '<strong>' + esc(n.label || '(untitled)') + '</strong>' +
-        '<span class="t-type-tag">' + (TYPES[n.type] || n.type) + '</span>';
+        '<span class="t-type-tag">' + getTypeName(n.type) + '</span>';
     }
     function build(n, edgeLabel) {
       var li = document.createElement('li');
@@ -1230,8 +1234,8 @@
     var html = '<h3>Overview</h3>';
     html += '<div class="stat-row"><span>Nodes</span><strong>' + graph.nodes.length + '</strong></div>';
     html += '<div class="stat-row"><span>Connections</span><strong>' + graph.edges.length + '</strong></div>';
-    Object.keys(TYPES).forEach(function (t) {
-      if (typeCounts[t]) html += '<div class="stat-row"><span>' + TYPES[t] + ' nodes</span><strong>' + typeCounts[t] + '</strong></div>';
+    graph.types.forEach(function (t) {
+      if (typeCounts[t.id]) html += '<div class="stat-row"><span>' + esc(t.name) + ' nodes</span><strong>' + typeCounts[t.id] + '</strong></div>';
     });
     html += '<div class="stat-row"><span>Longest path</span><strong>' +
       (a.hasCycle ? '∞ (cycle present)' : a.longest + ' step' + (a.longest === 1 ? '' : 's')) + '</strong></div>';
@@ -1242,7 +1246,7 @@
     terminals.forEach(function (n) {
       var paths = a.pathCounts ? a.pathCounts[n.id] : null;
       html += '<div class="term-item"><span class="t-dot type-' + n.type + '"></span>' + esc(n.label || '(untitled)') +
-        '<div class="ti-meta">' + (TYPES[n.type] || n.type) +
+        '<div class="ti-meta">' + getTypeName(n.type) +
         (paths !== null ? ' · ' + paths + ' path' + (paths === 1 ? '' : 's') + ' in' : ' · path count n/a (cycles)') +
         '</div></div>';
     });
