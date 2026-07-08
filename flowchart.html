@@ -440,7 +440,8 @@
   function deepCopy(o) { return JSON.parse(JSON.stringify(o)); }
   function getNode(id) { return graph.nodes.find(function (n) { return n.id === id; }); }
   function getTypeName(typeId) {
-    var t = graph.types.find(function(t){ return t.id === typeId; });
+    var types = graph.types || [];
+    var t = types.find(function(t){ return t.id === typeId; });
     return t ? t.name : (typeId || 'Untyped');
   }
   function esc(s) {
@@ -570,7 +571,7 @@
     nodeLayer.innerHTML = '';
     graph.nodes.forEach(function (n) {
       var el = document.createElement('div');
-      var ntype = graph.types.find(function(t){ return t.id === n.type; });
+      var ntype = (graph.types || []).find(function(t){ return t.id === n.type; });
       el.className = 'node' + (sel.nodes.has(n.id) ? ' selected' : '');
       el.dataset.id = n.id;
       el.style.left = n.x + 'px';
@@ -773,12 +774,12 @@
   function populateTypeDropdown(currentTypeId) {
     var sel = $('fType');
     sel.innerHTML = '';
-    if (!graph.types.length) {
+    if (!(graph.types || []).length) {
       var opt = document.createElement('option');
       opt.value = ''; opt.textContent = '(no types — create one first)';
       sel.appendChild(opt);
     }
-    graph.types.forEach(function(t) {
+    (graph.types || []).forEach(function(t) {
       var opt = document.createElement('option');
       opt.value = t.id; opt.textContent = t.name;
       sel.appendChild(opt);
@@ -1234,7 +1235,7 @@
     var html = '<h3>Overview</h3>';
     html += '<div class="stat-row"><span>Nodes</span><strong>' + graph.nodes.length + '</strong></div>';
     html += '<div class="stat-row"><span>Connections</span><strong>' + graph.edges.length + '</strong></div>';
-    graph.types.forEach(function (t) {
+    (graph.types || []).forEach(function (t) {
       if (typeCounts[t.id]) html += '<div class="stat-row"><span>' + esc(t.name) + ' nodes</span><strong>' + typeCounts[t.id] + '</strong></div>';
     });
     html += '<div class="stat-row"><span>Longest path</span><strong>' +
@@ -1317,6 +1318,7 @@
   function renderTypesList() {
     var list = $('typesList');
     list.innerHTML = '';
+    graph.types = graph.types || [];
     if (!graph.types.length) {
       list.innerHTML = '<div style="padding:12px;color:var(--muted);font-size:13px;">No types yet — add one below.</div>';
       return;
@@ -1373,6 +1375,7 @@
 
   $('btnAddType').addEventListener('click', function() {
     var colours = ['#58a6ff','#3fb950','#f85149','#d29922','#bc8cff','#ff7b72','#79c0ff','#56d364'];
+    graph.types = graph.types || [];
     var colour = colours[graph.types.length % colours.length];
     beginChange();
     graph.types.push({ id: uid(), name: 'New type', colour: colour });
