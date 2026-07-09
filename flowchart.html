@@ -310,6 +310,7 @@
   </div>
   <button class="btn" id="btnAddNode" title="Add node (or double-click canvas)">＋ Node</button>
   <button class="btn" id="btnFit" title="Fit chart in view">Fit</button>
+  <button class="btn" id="btnAutoLayout" title="Auto-arrange nodes top-down">Auto-layout</button>
   <button class="btn" id="btnTypes">Types</button>
   <button class="btn" id="btnAnalytics">Analytics</button>
   <button class="btn" id="btnExport" title="Download chart as JSON">Export</button>
@@ -590,6 +591,163 @@
     view.x = (r.width - (maxX - minX) * s) / 2 - minX * s;
     view.y = (r.height - (maxY - minY) * s) / 2 - minY * s;
     applyView();
+  }
+
+  /* ── Auto-layout (Sugiyama-lite top-down) ─────────── */
+  function autoLayout() {
+    if (!graph.nodes.length) return;
+    var NODE_W = 210, NODE_H = 80, GAP_X = 40, GAP_Y = 60;
+
+    // Build adjacency — break cycles via DFS (3-colour)
+    var adj = {}, radj = {};
+    graph.nodes.forEach(function(n) { adj[n.id] = []; radj[n.id] = []; });
+    // detect back-edges (cycle-forming) and exclude from layout
+    var color = {}, treeEdges = new Set();
+    function dfs(v) {
+      color[v] = 1;
+      adj[v].forEach(function(w) {
+        if (!color[w]) { treeEdges.add(v + '>' + w); dfs(w); }
+        else if (color[w] === 1) { /* back edge — skip */ }
+        else { treeEdges.add(v + '>' + w); }
+      });
+      color[v] = 2;
+    }
+    graph.edges.forEach(function(e) {
+      if (adj[e.from]) adj[e.from].push(e.to);
+      if (radj[e.to]) radj[e.to].push(e.from);
+    });
+    graph.nodes.forEach(function(n) { if (!color[n.id]) dfs(n.id); });
+
+    // Compute in-degree on tree edges only
+    var indeg = {};
+    graph.nodes.forEach(function(n) { indeg[n.id] = 0; });
+    graph.edges.forEach(function(e) {
+      if (treeEdges.has(e.from + '>' + e.to)) indeg[e.to]++;
+    });
+
+    // Assign levels via BFS from roots
+    var level = {}, queue = [];
+    graph.nodes.forEach(function(n) {
+      if (indeg[n.id] === 0) { level[n.id] = 0; queue.push(n.id); }
+    });
+    // handle any nodes unreached (pure cycles) — assign level 0
+    graph.nodes.forEach(function(n) { if (level[n.id] === undefined) { level[n.id] = 0; queue.push(n.id); } });
+    while (queue.length) {
+      var v = queue.shift();
+      graph.edges.forEach(function(e) {
+        if (e.from === v && treeEdges.has(e.from + '>' + e.to)) {
+          var proposed = level[v] + 1;
+          if (level[e.to] === undefined || proposed > level[e.to]) {
+            level[e.to] = proposed;
+            queue.push(e.to);
+          }
+        }
+      });
+    }
+
+    // Group nodes by level
+    var byLevel = {};
+    graph.nodes.forEach(function(n) {
+      var lv = level[n.id] || 0;
+      (byLevel[lv] = byLevel[lv] || []).push(n.id);
+    });
+    var maxLevel = Math.max.apply(null, Object.keys(byLevel).map(Number));
+
+    // Identify separate trees (connected components ignoring direction)
+    var comp = {}, compId = 0;
+    function floodFill(startId, cid) {
+      var q = [startId];
+      while (q.length) {
+        var v = q.shift();
+        if (comp[v] !== undefined) continue;
+        comp[v] = cid;
+        graph.edges.forEach(function(e) {
+          if (e.from === v && comp[e.to] === undefined) q.push(e.to);
+          if (e.to === v && comp[e.from] === undefined) q.push(e.from);
+        });
+      }
+    }
+    graph.nodes.forEach(function(n) { if (comp[n.id] === undefined) { floodFill(n.id, compId++); } });
+
+    // Layout each component separately, then place side by side
+    var numComps = compId;
+    var compWidths = [], compLayouts = [];
+    for (var c = 0; c < numComps; c++) {
+      var compNodes = graph.nodes.filter(function(n) { return comp[n.id] === c; });
+      var compByLevel = {};
+      compNodes.forEach(function(n) {
+        var lv = level[n.id] || 0;
+        (compByLevel[lv] = compByLevel[lv] || []).push(n.id);
+      });
+      var maxW = 0;
+      Object.keys(compByLevel).forEach(function(lv) {
+        var w = compByLevel[lv].length * (NODE_W + GAP_X) - GAP_X;
+        if (w > maxW) maxW = w;
+      });
+      compWidths.push(maxW);
+      compLayouts.push(compByLevel);
+    }
+
+    // Position nodes
+    beginChange();
+    var xOffset = 0;
+    for (var c = 0; c < numComps; c++) {
+      var compByLevel = compLayouts[c];
+      var compW = compWidths[c];
+      Object.keys(compByLevel).sort(function(a,b){return a-b;}).forEach(function(lv) {
+        var ids = compByLevel[lv];
+        var rowW = ids.length * (NODE_W + GAP_X) - GAP_X;
+        var startX = xOffset + (compW - rowW) / 2;
+        ids.forEach(function(id, i) {
+          var n = getNode(id);
+          if (n) {
+            n.x = Math.round(startX + i * (NODE_W + GAP_X));
+            n.y = Math.round((level[id] || 0) * (NODE_H + GAP_Y) + 40);
+          }
+        });
+      });
+      xOffset += compW + 80; // gap between trees
+    }
+
+    // Animate: snapshot positions, interpolate over 400ms
+    var startPositions = {};
+    graph.nodes.forEach(function(n) { startPositions[n.id] = { x: n.x, y: n.y }; });
+    // positions already set above — we need to revert to old, then animate
+    // actually: beginChange already saved; restore targets from n.x/n.y
+    var targets = {};
+    graph.nodes.forEach(function(n) { targets[n.id] = { x: n.x, y: n.y }; });
+    // restore originals from undo stack top
+    var orig = undoStack[undoStack.length - 1];
+    orig.nodes.forEach(function(on) {
+      var n = getNode(on.id);
+      if (n) { n.x = on.x; n.y = on.y; }
+    });
+
+    var start = null, DURATION = 400;
+    function step(ts) {
+      if (!start) start = ts;
+      var t = Math.min((ts - start) / DURATION, 1);
+      // ease in-out cubic
+      var ease = t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t+2,3)/2;
+      graph.nodes.forEach(function(n) {
+        var tgt = targets[n.id];
+        if (!tgt) return;
+        var src = orig.nodes.find(function(o){ return o.id === n.id; });
+        if (!src) return;
+        n.x = Math.round(src.x + (tgt.x - src.x) * ease);
+        n.y = Math.round(src.y + (tgt.y - src.y) * ease);
+      });
+      render();
+      if (t < 1) requestAnimationFrame(step);
+      else {
+        // snap to final, save
+        graph.nodes.forEach(function(n) { var tgt = targets[n.id]; if (tgt) { n.x = tgt.x; n.y = tgt.y; } });
+        render();
+        markDirty();
+        fitView();
+      }
+    }
+    requestAnimationFrame(step);
   }
 
   /* ── Rendering: nodes ──────────────────────────────── */
@@ -1109,6 +1267,7 @@
     zoomAt(r.left + r.width / 2, r.top + r.height / 2, 1 / 1.2);
   });
   $('btnFit').addEventListener('click', fitView);
+  $('btnAutoLayout').addEventListener('click', function() { if (currentId) autoLayout(); });
 
   $('btnAddNode').addEventListener('click', function () {
     if (!currentId) return;
