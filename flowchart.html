@@ -145,6 +145,38 @@
     background: var(--panel2); border: 2px solid var(--muted); cursor: crosshair;
   }
   .port:hover { border-color: var(--accent); background: var(--accent); }
+  .resize-handle {
+    position: absolute; right: 0; bottom: 0; width: 14px; height: 14px;
+    cursor: se-resize; background: linear-gradient(135deg, transparent 50%, var(--muted) 50%);
+    border-radius: 0 0 8px 0; opacity: 0.4;
+  }
+  .node:hover .resize-handle { opacity: 1; }
+  #ctxPanel {
+    position: absolute; z-index: 20;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+    box-shadow: var(--shadow); min-width: 480px; user-select: none;
+    top: 20px; left: 50%; transform: translateX(-50%);
+  }
+  #ctxPanel .ctx-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 12px; border-bottom: 1px solid var(--border);
+    cursor: move; font-size: 12px; color: var(--muted);
+  }
+  #ctxPanel .ctx-body { display: flex; align-items: stretch; padding: 14px 10px; min-height: 80px; }
+  .ctx-col { display: flex; flex-direction: column; gap: 8px; min-width: 130px; justify-content: center; }
+  .ctx-col.center { min-width: 140px; align-items: center; }
+  .ctx-col-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing:.04em; text-align:center; margin-bottom: 4px; }
+  .ctx-node {
+    background: var(--panel2); border: 1px solid var(--border); border-left-width: 3px;
+    border-radius: 6px; padding: 6px 9px; cursor: pointer; font-size: 12px;
+  }
+  .ctx-node:hover { outline: 1px solid var(--accent); }
+  .ctx-node.ctx-selected { outline: 2px solid #3fb950; }
+  .ctx-node .ctx-n-type { font-size: 10px; text-transform: uppercase; letter-spacing:.04em; margin-bottom: 2px; }
+  .ctx-node .ctx-n-label { font-weight: 600; word-wrap: break-word; }
+  .ctx-edges { display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 0 8px; }
+  .ctx-arrow { color: var(--muted); font-size: 18px; }
+  .ctx-empty { color: var(--muted); font-size: 12px; font-style: italic; text-align: center; padding: 8px; }
 
   .edge-path { fill: none; stroke: var(--muted); stroke-width: 1.6; pointer-events: none; }
   .edge-hit  { fill: none; stroke: transparent; stroke-width: 14; cursor: pointer; pointer-events: visibleStroke; }
@@ -366,6 +398,13 @@
       <div id="hintBar">double-click: new node · drag ◯: connect · Del: delete · Ctrl+Z/Y: undo/redo · Ctrl+D: duplicate subtree</div>
     </div>
 
+    <div id="ctxPanel" hidden>
+      <div class="ctx-head" id="ctxHead">
+        <span>Node context</span>
+        <button class="btn" id="btnCtxClose" style="padding:1px 7px;">✕</button>
+      </div>
+      <div class="ctx-body" id="ctxBody"></div>
+    </div>
     <div id="treeView" hidden></div>
     <aside id="analytics" hidden></aside>
     <aside id="typesPanel" hidden>
@@ -766,6 +805,8 @@
       el.dataset.id = n.id;
       el.style.left = n.x + 'px';
       el.style.top = n.y + 'px';
+      if (n.w) el.style.width = n.w + 'px';
+      if (n.h) { el.style.height = n.h + 'px'; el.style.overflow = 'hidden'; }
       el.style.borderLeftColor = ntype ? ntype.colour : 'var(--muted)';
       var typeLabel = ntype ? ntype.name : (n.type || 'Untyped');
       var typeLabelColour = ntype ? ntype.colour : 'var(--muted)';
@@ -774,7 +815,8 @@
         '<div class="n-type" style="color:' + typeLabelColour + '">' + esc(typeLabel) + '</div>' +
         '<div class="n-label">' + esc(n.label || '(untitled)') + '</div>' +
         notesPrev +
-        '<div class="port" data-port="' + n.id + '" title="Drag to connect"></div>';
+        '<div class="port" data-port="' + n.id + '" title="Drag to connect"></div>' +
+        '<div class="resize-handle" data-resize="' + n.id + '"></div>';
       nodeLayer.appendChild(el);
     });
     // measure
@@ -1120,6 +1162,17 @@
     var portEl = ev.target.closest('.port');
     var nodeEl = ev.target.closest('.node');
 
+    var resizeEl = ev.target.closest ? ev.target.closest('[data-resize]') : null;
+    if (resizeEl) {
+      ev.preventDefault();
+      var rId = resizeEl.dataset.resize;
+      var rNode = getNode(rId);
+      var rEl = nodeLayer.querySelector('.node[data-id="' + rId + '"]');
+      drag = { kind: 'resize', id: rId, startX: ev.clientX, startY: ev.clientY,
+               origW: rNode.w || rEl.offsetWidth, origH: rNode.h || rEl.offsetHeight,
+               snapshot: deepCopy(graph) };
+      return;
+    }
     if (portEl) {
       ev.preventDefault();
       drag = { kind: 'link', from: portEl.dataset.port, moved: false, hover: null };
@@ -1136,6 +1189,7 @@
       }
       if (!sel.nodes.has(id)) { sel.nodes = new Set([id]); sel.edges.clear(); hl = Object.assign({ id: id }, computeHighlights(id)); render(); }
       else { hl = Object.assign({ id: id }, computeHighlights(id)); }
+      renderCtxPanel(id);
       var start = toWorld(ev.clientX, ev.clientY);
       var origins = {};
       sel.nodes.forEach(function (nid) { var n = getNode(nid); origins[nid] = { x: n.x, y: n.y }; });
@@ -1167,6 +1221,17 @@
         if (el) { el.style.left = n.x + 'px'; el.style.top = n.y + 'px'; }
       });
       renderEdges();
+    } else if (drag.kind === 'resize') {
+      var rdx = (ev.clientX - drag.startX) / view.scale;
+      var rdy = (ev.clientY - drag.startY) / view.scale;
+      var rn = getNode(drag.id);
+      if (rn) {
+        rn.w = Math.max(120, Math.round(drag.origW + rdx));
+        rn.h = Math.max(50,  Math.round(drag.origH + rdy));
+        var rel = nodeLayer.querySelector('.node[data-id="' + drag.id + '"]');
+        if (rel) { rel.style.width = rn.w + 'px'; rel.style.height = rn.h + 'px'; }
+        renderEdges();
+      }
     } else if (drag.kind === 'link') {
       drag.moved = true;
       var src = getNode(drag.from);
@@ -1198,7 +1263,12 @@
     var d = drag; drag = null;
     wrap.classList.remove('panning');
     if (d.kind === 'pan') {
-      if (!d.moved && mode === 'canvas') { sel.nodes.clear(); sel.edges.clear(); hl = null; render(); }
+      if (!d.moved && mode === 'canvas') { sel.nodes.clear(); sel.edges.clear(); hl = null; render(); closeCtxPanel(); }
+    } else if (d.kind === 'resize') {
+      undoStack.push(d.snapshot);
+      if (undoStack.length > UNDO_CAP) undoStack.shift();
+      redoStack.length = 0;
+      render(); markDirty();
     } else if (d.kind === 'node') {
       if (d.moved) {
         undoStack.push(d.snapshot);
@@ -1583,6 +1653,61 @@
     var last = rows[rows.length - 1];
     if (last) { last.focus(); last.select(); }
   });
+
+  /* ── Context panel (──────────────────────────────) */
+  var ctxPanel = $('ctxPanel');
+  var ctxNodeId = null;
+  function renderCtxPanel(nodeId) {
+    ctxNodeId = nodeId;
+    var n = getNode(nodeId); if (!n) return;
+    var parents = [], children = [];
+    graph.edges.forEach(function(e) {
+      if (e.to === nodeId) { var p = getNode(e.from); if (p) parents.push(p); }
+      if (e.from === nodeId) { var c = getNode(e.to); if (c) children.push(c); }
+    });
+    function nodeCard(nd, cls) {
+      var nt = (graph.types||[]).find(function(t){ return t.id===nd.type; });
+      var col = nt ? nt.colour : 'var(--muted)';
+      var tl = nt ? nt.name : (nd.type||'Untyped');
+      return '<div class="ctx-node '+(cls||'')+'" data-ctx-id="'+nd.id+'" style="border-left-color:'+col+'">'+
+        '<div class="ctx-n-type" style="color:'+col+'">'+esc(tl)+'</div>'+
+        '<div class="ctx-n-label">'+esc(nd.label||'(untitled)')+'</div></div>';
+    }
+    var h = '<div class="ctx-col"><div class="ctx-col-label">Ancestors</div>';
+    if (parents.length) parents.forEach(function(p){ h+=nodeCard(p,''); });
+    else h+='<div class="ctx-empty">none</div>';
+    h+='</div><div class="ctx-edges"><span class="ctx-arrow">→</span></div>';
+    h+='<div class="ctx-col center"><div class="ctx-col-label">Selected</div>'+nodeCard(n,'ctx-selected')+'</div>';
+    h+='<div class="ctx-edges"><span class="ctx-arrow">→</span></div>';
+    h+='<div class="ctx-col"><div class="ctx-col-label">Descendants</div>';
+    if (children.length) children.forEach(function(c){ h+=nodeCard(c,''); });
+    else h+='<div class="ctx-empty">none</div>';
+    h+='</div>';
+    $('ctxBody').innerHTML = h;
+    ctxPanel.hidden = false;
+    Array.prototype.forEach.call(ctxPanel.querySelectorAll('[data-ctx-id]'), function(el) {
+      el.addEventListener('click', function(ev) {
+        ev.stopPropagation();
+        var id = el.dataset.ctxId; if (id===nodeId) return;
+        sel.nodes=new Set([id]); sel.edges.clear();
+        hl=Object.assign({id:id},computeHighlights(id));
+        render(); renderCtxPanel(id);
+      });
+    });
+  }
+  function closeCtxPanel() { ctxPanel.hidden=true; ctxNodeId=null; }
+  $('btnCtxClose').addEventListener('click',function(ev){ ev.stopPropagation(); closeCtxPanel(); });
+  (function(){
+    var pd=null;
+    $('ctxHead').addEventListener('mousedown',function(ev){
+      if(ev.target.id==='btnCtxClose') return;
+      var r=ctxPanel.getBoundingClientRect();
+      pd={sx:ev.clientX,sy:ev.clientY,ox:r.left,oy:r.top};
+      ctxPanel.style.transform='none'; ev.preventDefault();
+    });
+    window.addEventListener('mousemove',function(ev){ if(!pd) return; ctxPanel.style.left=(pd.ox+ev.clientX-pd.sx)+'px'; ctxPanel.style.top=(pd.oy+ev.clientY-pd.sy)+'px'; });
+    window.addEventListener('mouseup',function(){ pd=null; });
+  })();
 
   /* ── Sign out ──────────────────────────────────────── */
   $('btnSignOut').addEventListener('click', function () {
