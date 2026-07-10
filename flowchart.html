@@ -1387,7 +1387,14 @@
     zoomAt(r.left + r.width / 2, r.top + r.height / 2, 1 / 1.2);
   });
   $('btnFit').addEventListener('click', fitView);
-  $('btnAutoLayout').addEventListener('click', function() { if (currentId) autoLayout(); });
+  $('btnAutoLayout').addEventListener('click', function() {
+    if (!currentId) return;
+    var name = chartNameEl.value.trim();
+    var input = prompt('Auto-layout will reposition all nodes. This is undoable with Ctrl+Z.\n\nType the chart name to confirm: "' + name + '"');
+    if (input === null) return;
+    if (input.trim() !== name) { alert('Chart name did not match. Auto-layout cancelled.'); return; }
+    autoLayout();
+  });
 
   $('btnAddNode').addEventListener('click', function () {
     if (!currentId) return;
