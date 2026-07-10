@@ -162,7 +162,7 @@
     padding: 8px 12px; border-bottom: 1px solid var(--border);
     cursor: move; font-size: 12px; color: var(--muted);
   }
- #ctxPanel .ctx-body { display: flex; align-items: center; padding: 14px 10px; min-height: 80px; }
+  #ctxPanel .ctx-body { display: flex; align-items: stretch; padding: 14px 10px; min-height: 80px; }
   .ctx-col { display: flex; flex-direction: column; gap: 8px; min-width: 130px; justify-content: center; }
   .ctx-col.center { min-width: 140px; align-items: center; }
   .ctx-col-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing:.04em; text-align:center; margin-bottom: 4px; }
@@ -171,7 +171,7 @@
     border-radius: 6px; padding: 6px 9px; cursor: pointer; font-size: 12px;
   }
   .ctx-node:hover { outline: 1px solid var(--accent); }
-  .ctx-col { display: flex; flex-direction: column; gap: 8px; min-width: 130px; justify-content: flex-start; max-height: 320px; overflow-y: auto; padding-top: 4px; }
+  .ctx-node.ctx-selected { outline: 2px solid #3fb950; }
   .ctx-node .ctx-n-type { font-size: 10px; text-transform: uppercase; letter-spacing:.04em; margin-bottom: 2px; }
   .ctx-node .ctx-n-label { font-weight: 600; word-wrap: break-word; }
   .ctx-edges { display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 0 8px; }
@@ -395,7 +395,7 @@
         <span id="zoomPct">100%</span>
         <button class="btn" id="btnZoomIn">＋</button>
       </div>
-      <div id="hintBar">double-click: new node · drag ◯: connect · Del: delete · Ctrl+Z/Y: undo/redo · Ctrl+D: duplicate subtree</div>
+      <div id="hintBar">double-click: new node · drag ◯: connect · Del: delete · Ctrl+Z/Y: undo/redo · Ctrl+D: duplicate · Ctrl+X/V: cut/paste</div>
     </div>
 
     <div id="ctxPanel" hidden>
@@ -467,6 +467,7 @@
   var view = { x: 0, y: 0, scale: 1 };
   var sel = { nodes: new Set(), edges: new Set() };
   var hl = null;
+  var clipboard = null; // { nodes, edges, extEdges, cutIds }
   var undoStack = [], redoStack = [];
   var sizes = {};               // nodeId -> {w,h}
   var dirty = false, saveTimer = null, saving = false, resaveNeeded = false;
@@ -1347,19 +1348,68 @@
   });
 
   /* ── Keyboard ──────────────────────────────────────── */
+  function cutSelection() {
+    if (!sel.nodes.size) return;
+    var ids = new Set(sel.nodes);
+    var cnodes = graph.nodes.filter(function(n){ return ids.has(n.id); }).map(function(n){ return deepCopy(n); });
+    var cedges = graph.edges.filter(function(e){ return ids.has(e.from) && ids.has(e.to); }).map(function(e){ return deepCopy(e); });
+    var extEdges = graph.edges.filter(function(e){ return ids.has(e.from) !== ids.has(e.to); }).map(function(e){ return deepCopy(e); });
+    clipboard = { nodes: cnodes, edges: cedges, extEdges: extEdges, cutIds: new Set(ids) };
+    ids.forEach(function(id) {
+      var el = nodeLayer.querySelector('.node[data-id="' + id + '"]');
+      if (el) el.style.opacity = '0.35';
+    });
+  }
+  function pasteClipboard() {
+    if (!clipboard) return;
+    beginChange();
+    var cutIds = clipboard.cutIds;
+    graph.nodes = graph.nodes.filter(function(n){ return !cutIds.has(n.id); });
+    graph.edges = graph.edges.filter(function(e){ return !cutIds.has(e.from) && !cutIds.has(e.to); });
+    var r = wrap.getBoundingClientRect();
+    var cx = (r.width / 2 - view.x) / view.scale;
+    var cy = (r.height / 2 - view.y) / view.scale;
+    var minX = Math.min.apply(null, clipboard.nodes.map(function(n){ return n.x; }));
+    var minY = Math.min.apply(null, clipboard.nodes.map(function(n){ return n.y; }));
+    var dx = cx - minX, dy = cy - minY;
+    var idMap = {};
+    clipboard.nodes.forEach(function(n) {
+      var newId = uid(); idMap[n.id] = newId;
+      graph.nodes.push({ id: newId, type: n.type, label: n.label, notes: n.notes,
+                         x: Math.round(n.x + dx), y: Math.round(n.y + dy), w: n.w, h: n.h });
+    });
+    clipboard.edges.forEach(function(e) {
+      graph.edges.push({ id: uid(), from: idMap[e.from], to: idMap[e.to], label: e.label });
+    });
+    clipboard.extEdges.forEach(function(e) {
+      var newFrom = idMap[e.from] || e.from;
+      var newTo   = idMap[e.to]   || e.to;
+      if (getNode(newFrom) && getNode(newTo)) {
+        graph.edges.push({ id: uid(), from: newFrom, to: newTo, label: e.label });
+      }
+    });
+    sel.nodes = new Set(Object.values(idMap));
+    sel.edges.clear(); clipboard = null;
+    changed();
+  }
+
   window.addEventListener('keydown', function (ev) {
     var tag = (ev.target.tagName || '').toLowerCase();
     var typing = tag === 'input' || tag === 'textarea' || tag === 'select';
     if (ev.key === 'Escape') {
       if (!overlay.hidden) { closeModal(); return; }
       if (drag && drag.kind === 'link') { tempEdge.hidden = true; drag = null; return; }
-      sel.nodes.clear(); sel.edges.clear(); hl = null; render();
+      sel.nodes.clear(); sel.edges.clear(); hl = null;
+      clipboard = null;
+      render();
       return;
     }
     if (typing || !overlay.hidden) return;
     if ((ev.ctrlKey || ev.metaKey) && !ev.shiftKey && ev.key.toLowerCase() === 'z') { ev.preventDefault(); undo(); }
     else if ((ev.ctrlKey || ev.metaKey) && (ev.key.toLowerCase() === 'y' || (ev.shiftKey && ev.key.toLowerCase() === 'z'))) { ev.preventDefault(); redo(); }
     else if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'd') { ev.preventDefault(); duplicateSubtree(); }
+    else if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'x') { ev.preventDefault(); cutSelection(); }
+    else if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'v') { ev.preventDefault(); pasteClipboard(); }
     else if (ev.key === 'Delete' || ev.key === 'Backspace') { ev.preventDefault(); deleteSelection(); }
   });
 
@@ -1691,9 +1741,29 @@
         var id = el.dataset.ctxId; if (id===nodeId) return;
         sel.nodes=new Set([id]); sel.edges.clear();
         hl=Object.assign({id:id},computeHighlights(id));
-        render(); renderCtxPanel(id);
+        render(); renderCtxPanel(id); centreOnNode(id);
       });
     });
+  }
+  function centreOnNode(nodeId) {
+    var n = getNode(nodeId); if (!n) return;
+    var s = sizes[nodeId] || { w: n.w || 190, h: n.h || 60 };
+    var r = wrap.getBoundingClientRect();
+    var targetS = Math.min(1.2, Math.max(0.4, view.scale));
+    var targetX = r.width  / 2 - (n.x + s.w / 2) * targetS;
+    var targetY = r.height / 2 - (n.y + s.h / 2) * targetS;
+    var startX = view.x, startY = view.y, startS = view.scale, t0 = null;
+    function step(ts) {
+      if (!t0) t0 = ts;
+      var t = Math.min((ts - t0) / 400, 1);
+      var ease = t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t+2,3)/2;
+      view.x = startX + (targetX - startX) * ease;
+      view.y = startY + (targetY - startY) * ease;
+      view.scale = startS + (targetS - startS) * ease;
+      applyView();
+      if (t < 1) requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
   }
   function closeCtxPanel() { ctxPanel.hidden=true; ctxNodeId=null; }
   $('btnCtxClose').addEventListener('click',function(ev){ ev.stopPropagation(); closeCtxPanel(); });
@@ -1701,9 +1771,11 @@
     var pd=null;
     $('ctxHead').addEventListener('mousedown',function(ev){
       if(ev.target.id==='btnCtxClose') return;
+      ctxPanel.style.transform='none';
       var r=ctxPanel.getBoundingClientRect();
+      ctxPanel.style.left=r.left+'px'; ctxPanel.style.top=r.top+'px';
       pd={sx:ev.clientX,sy:ev.clientY,ox:r.left,oy:r.top};
-      ctxPanel.style.transform='none'; ev.preventDefault();
+      ev.preventDefault();
     });
     window.addEventListener('mousemove',function(ev){ if(!pd) return; ctxPanel.style.left=(pd.ox+ev.clientX-pd.sx)+'px'; ctxPanel.style.top=(pd.oy+ev.clientY-pd.sy)+'px'; });
     window.addEventListener('mouseup',function(){ pd=null; });
