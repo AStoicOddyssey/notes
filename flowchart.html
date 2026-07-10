@@ -436,6 +436,7 @@
     <textarea id="fNotes"></textarea>
     <div class="m-actions">
       <button class="btn danger" id="fDelete">Delete</button>
+      <button class="btn" id="fHide">Hide edges</button>
       <span class="spacer"></span>
       <button class="btn" id="fCancel">Cancel</button>
       <button class="btn primary" id="fSave">Save</button>
@@ -473,6 +474,7 @@
   var sel = { nodes: new Set(), edges: new Set() };
   var hl = null;
   var clipboard = null; // { nodes, edges, extEdges, cutIds }
+  var hiddenEdgeNodes = new Set();
   var undoStack = [], redoStack = [];
   var sizes = {};               // nodeId -> {w,h}
   var dirty = false, saveTimer = null, saving = false, resaveNeeded = false;
@@ -1042,6 +1044,9 @@
     populateTypeDropdown(n.type);
     $('fLabel').value = n.label || '';
     $('fNotes').value = n.notes || '';
+    var fHideBtn = $('fHide');
+    fHideBtn.textContent = hiddenEdgeNodes.has(id) ? 'Show edges' : 'Hide edges';
+    fHideBtn.classList.toggle('active', hiddenEdgeNodes.has(id));
     overlay.hidden = false; nodeModal.hidden = false; edgeModal.hidden = true;
     $('fLabel').focus(); $('fLabel').select();
   }
@@ -1082,6 +1087,15 @@
     closeModal();
   });
   $('fCancel').addEventListener('click', closeModal);
+  $('fHide').addEventListener('click', function() {
+    if (!editingNodeId) return;
+    if (hiddenEdgeNodes.has(editingNodeId)) hiddenEdgeNodes.delete(editingNodeId);
+    else hiddenEdgeNodes.add(editingNodeId);
+    var btn = $('fHide');
+    btn.textContent = hiddenEdgeNodes.has(editingNodeId) ? 'Show edges' : 'Hide edges';
+    btn.classList.toggle('active', hiddenEdgeNodes.has(editingNodeId));
+    renderEdges();
+  });
   $('eSave').addEventListener('click', function () {
     var e = graph.edges.find(function (x) { return x.id === editingEdgeId; });
     if (e) {
