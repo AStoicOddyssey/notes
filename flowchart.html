@@ -151,11 +151,11 @@
     border-radius: 0 0 8px 0; opacity: 0.4;
   }
   .node:hover .resize-handle { opacity: 1; }
- #ctxPanel {
+  #ctxPanel {
     position: absolute; z-index: 20;
     background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
     box-shadow: var(--shadow); min-width: 480px; user-select: none;
-    bottom: 50px; right: 14px;
+    top: 20px; left: 50%; transform: translateX(-50%);
   }
   #ctxPanel .ctx-head {
     display: flex; align-items: center; justify-content: space-between;
@@ -327,6 +327,10 @@
   .type-del-btn:hover { color: var(--red); }
   #typesPanel .tp-foot { padding: 10px; border-top: 1px solid var(--border); }
 
+  #marquee {
+    position: absolute; border: 1px dashed var(--accent);
+    background: rgba(88,166,255,0.08); pointer-events: none; z-index: 10;
+  }
   [hidden] { display: none !important; }
 </style>
 </head>
@@ -395,6 +399,7 @@
         <span id="zoomPct">100%</span>
         <button class="btn" id="btnZoomIn">＋</button>
       </div>
+      <div id="marquee" hidden></div>
       <div id="hintBar">double-click: new node · drag ◯: connect · Del: delete · Ctrl+Z/Y: undo/redo · Ctrl+D: duplicate · Ctrl+X/V: cut/paste</div>
     </div>
 
@@ -1190,14 +1195,25 @@
       }
       if (!sel.nodes.has(id)) { sel.nodes = new Set([id]); sel.edges.clear(); hl = Object.assign({ id: id }, computeHighlights(id)); render(); }
       else { hl = Object.assign({ id: id }, computeHighlights(id)); }
-      renderCtxPanel(id);
+      if (sel.nodes.size <= 1) renderCtxPanel(id); else closeCtxPanel();
       var start = toWorld(ev.clientX, ev.clientY);
       var origins = {};
       sel.nodes.forEach(function (nid) { var n = getNode(nid); origins[nid] = { x: n.x, y: n.y }; });
       drag = { kind: 'node', start: start, origins: origins, moved: false, snapshot: deepCopy(graph) };
       return;
     }
-    // empty canvas -> pan
+    // empty canvas -> marquee (Ctrl) or pan
+    if (ev.ctrlKey || ev.metaKey) {
+      ev.preventDefault();
+      var mp = toWorld(ev.clientX, ev.clientY);
+      drag = { kind: 'marquee', sx: ev.clientX, sy: ev.clientY, wx: mp.x, wy: mp.y };
+      var mq = $('marquee');
+      mq.hidden = false;
+      mq.style.left = ev.clientX - wrap.getBoundingClientRect().left + 'px';
+      mq.style.top  = ev.clientY - wrap.getBoundingClientRect().top  + 'px';
+      mq.style.width = '0'; mq.style.height = '0';
+      return;
+    }
     drag = { kind: 'pan', sx: ev.clientX, sy: ev.clientY, ox: view.x, oy: view.y, moved: false };
     wrap.classList.add('panning');
   });
@@ -1233,6 +1249,15 @@
         if (rel) { rel.style.width = rn.w + 'px'; rel.style.height = rn.h + 'px'; }
         renderEdges();
       }
+    } else if (drag.kind === 'marquee') {
+      var r = wrap.getBoundingClientRect();
+      var x1 = Math.min(drag.sx, ev.clientX) - r.left;
+      var y1 = Math.min(drag.sy, ev.clientY) - r.top;
+      var x2 = Math.max(drag.sx, ev.clientX) - r.left;
+      var y2 = Math.max(drag.sy, ev.clientY) - r.top;
+      var mq = $('marquee');
+      mq.style.left = x1 + 'px'; mq.style.top = y1 + 'px';
+      mq.style.width = (x2 - x1) + 'px'; mq.style.height = (y2 - y1) + 'px';
     } else if (drag.kind === 'link') {
       drag.moved = true;
       var src = getNode(drag.from);
@@ -1265,6 +1290,30 @@
     wrap.classList.remove('panning');
     if (d.kind === 'pan') {
       if (!d.moved && mode === 'canvas') { sel.nodes.clear(); sel.edges.clear(); hl = null; render(); closeCtxPanel(); }
+    } else if (d.kind === 'marquee') {
+      var mq = $('marquee');
+      mq.hidden = true;
+      var r = wrap.getBoundingClientRect();
+      var wx1 = (Math.min(d.sx, ev.clientX) - r.left - view.x) / view.scale;
+      var wy1 = (Math.min(d.sy, ev.clientY) - r.top  - view.y) / view.scale;
+      var wx2 = (Math.max(d.sx, ev.clientX) - r.left - view.x) / view.scale;
+      var wy2 = (Math.max(d.sy, ev.clientY) - r.top  - view.y) / view.scale;
+      graph.nodes.forEach(function(n) {
+        var s = sizes[n.id] || { w: n.w || 190, h: n.h || 60 };
+        if (n.x < wx2 && n.x + s.w > wx1 && n.y < wy2 && n.y + s.h > wy1) {
+          sel.nodes.add(n.id);
+        }
+      });
+      sel.edges.clear();
+      hl = null;
+      if (sel.nodes.size === 1) {
+        var id = Array.from(sel.nodes)[0];
+        hl = Object.assign({ id: id }, computeHighlights(id));
+        renderCtxPanel(id);
+      } else {
+        closeCtxPanel();
+      }
+      render();
     } else if (d.kind === 'resize') {
       undoStack.push(d.snapshot);
       if (undoStack.length > UNDO_CAP) undoStack.shift();
@@ -1767,7 +1816,19 @@
   }
   function closeCtxPanel() { ctxPanel.hidden=true; ctxNodeId=null; }
   $('btnCtxClose').addEventListener('click',function(ev){ ev.stopPropagation(); closeCtxPanel(); });
-
+  (function(){
+    var pd=null;
+    $('ctxHead').addEventListener('mousedown',function(ev){
+      if(ev.target.id==='btnCtxClose') return;
+      ctxPanel.style.transform='none';
+      var r=ctxPanel.getBoundingClientRect();
+      ctxPanel.style.left=r.left+'px'; ctxPanel.style.top=r.top+'px';
+      pd={sx:ev.clientX,sy:ev.clientY,ox:r.left,oy:r.top};
+      ev.preventDefault();
+    });
+    window.addEventListener('mousemove',function(ev){ if(!pd) return; ctxPanel.style.left=(pd.ox+ev.clientX-pd.sx)+'px'; ctxPanel.style.top=(pd.oy+ev.clientY-pd.sy)+'px'; });
+    window.addEventListener('mouseup',function(){ pd=null; });
+  })();
 
   /* ── Sign out ──────────────────────────────────────── */
   $('btnSignOut').addEventListener('click', function () {
