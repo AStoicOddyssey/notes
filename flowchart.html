@@ -890,8 +890,10 @@
         if (e.from === hl.id || hl.descendants.has(e.from)) edgeHlClass = ' hl-down';
         else if (e.to === hl.id || hl.ancestors.has(e.to)) edgeHlClass = ' hl-up';
       }
+      var edgeHidden = hiddenEdgeNodes.has(e.from) || hiddenEdgeNodes.has(e.to);
       g.setAttribute('class', 'edge' + (sel.edges.has(e.id) ? ' selected' : '') + edgeHlClass);
       g.dataset.id = e.id;
+      g.style.opacity = edgeHidden ? '0.15' : '1';
 
       var hit = document.createElementNS(SVGNS, 'path');
       hit.setAttribute('class', 'edge-hit');
