@@ -1767,19 +1767,7 @@
   }
   function closeCtxPanel() { ctxPanel.hidden=true; ctxNodeId=null; }
   $('btnCtxClose').addEventListener('click',function(ev){ ev.stopPropagation(); closeCtxPanel(); });
-  (function(){
-    var pd=null;
-    $('ctxHead').addEventListener('mousedown',function(ev){
-      if(ev.target.id==='btnCtxClose') return;
-      ctxPanel.style.transform='none';
-      var r=ctxPanel.getBoundingClientRect();
-      ctxPanel.style.left=r.left+'px'; ctxPanel.style.top=r.top+'px';
-      pd={sx:ev.clientX,sy:ev.clientY,ox:r.left,oy:r.top};
-      ev.preventDefault();
-    });
-    window.addEventListener('mousemove',function(ev){ if(!pd) return; ctxPanel.style.left=(pd.ox+ev.clientX-pd.sx)+'px'; ctxPanel.style.top=(pd.oy+ev.clientY-pd.sy)+'px'; });
-    window.addEventListener('mouseup',function(){ pd=null; });
-  })();
+
 
   /* ── Sign out ──────────────────────────────────────── */
   $('btnSignOut').addEventListener('click', function () {
