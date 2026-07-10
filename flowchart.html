@@ -155,12 +155,12 @@
     position: absolute; z-index: 20;
     background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
     box-shadow: var(--shadow); min-width: 480px; user-select: none;
-    top: 20px; left: 50%; transform: translateX(-50%);
+    bottom: 50px; right: 14px;
   }
   #ctxPanel .ctx-head {
     display: flex; align-items: center; justify-content: space-between;
     padding: 8px 12px; border-bottom: 1px solid var(--border);
-    cursor: move; font-size: 12px; color: var(--muted);
+    font-size: 12px; color: var(--muted);
   }
   #ctxPanel .ctx-body { display: flex; align-items: stretch; padding: 14px 10px; min-height: 80px; }
   .ctx-col { display: flex; flex-direction: column; gap: 8px; min-width: 130px; justify-content: center; }
@@ -1816,19 +1816,7 @@
   }
   function closeCtxPanel() { ctxPanel.hidden=true; ctxNodeId=null; }
   $('btnCtxClose').addEventListener('click',function(ev){ ev.stopPropagation(); closeCtxPanel(); });
-  (function(){
-    var pd=null;
-    $('ctxHead').addEventListener('mousedown',function(ev){
-      if(ev.target.id==='btnCtxClose') return;
-      ctxPanel.style.transform='none';
-      var r=ctxPanel.getBoundingClientRect();
-      ctxPanel.style.left=r.left+'px'; ctxPanel.style.top=r.top+'px';
-      pd={sx:ev.clientX,sy:ev.clientY,ox:r.left,oy:r.top};
-      ev.preventDefault();
-    });
-    window.addEventListener('mousemove',function(ev){ if(!pd) return; ctxPanel.style.left=(pd.ox+ev.clientX-pd.sx)+'px'; ctxPanel.style.top=(pd.oy+ev.clientY-pd.sy)+'px'; });
-    window.addEventListener('mouseup',function(){ pd=null; });
-  })();
+
 
   /* ── Sign out ──────────────────────────────────────── */
   $('btnSignOut').addEventListener('click', function () {
