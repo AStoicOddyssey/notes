@@ -400,7 +400,7 @@
         <button class="btn" id="btnZoomIn">＋</button>
       </div>
       <div id="marquee" hidden></div>
-      <div id="hintBar">double-click: new node · drag ◯: connect · Del: delete · Ctrl+Z/Y: undo/redo · Ctrl+D: duplicate · Ctrl+X/V: cut/paste</div>
+      <div id="hintBar">double-click: new node · drag ◯: connect · Del: delete · Ctrl+Z/Y: undo/redo · Ctrl+D: duplicate · Ctrl+X/C/V: cut/copy/paste · Ctrl+Shift+V: paste without edges</div>
     </div>
 
     <div id="ctxPanel" hidden>
@@ -1432,12 +1432,23 @@
       if (el) el.style.opacity = '0.35';
     });
   }
-  function pasteClipboard() {
+  function copySelection() {
+    if (!sel.nodes.size) return;
+    var ids = new Set(sel.nodes);
+    var cnodes = graph.nodes.filter(function(n){ return ids.has(n.id); }).map(function(n){ return deepCopy(n); });
+    var cedges = graph.edges.filter(function(e){ return ids.has(e.from) && ids.has(e.to); }).map(function(e){ return deepCopy(e); });
+    var extEdges = graph.edges.filter(function(e){ return ids.has(e.from) !== ids.has(e.to); }).map(function(e){ return deepCopy(e); });
+    clipboard = { nodes: cnodes, edges: cedges, extEdges: extEdges, cutIds: null };
+  }
+
+  function pasteClipboard(withEdges) {
     if (!clipboard) return;
     beginChange();
     var cutIds = clipboard.cutIds;
-    graph.nodes = graph.nodes.filter(function(n){ return !cutIds.has(n.id); });
-    graph.edges = graph.edges.filter(function(e){ return !cutIds.has(e.from) && !cutIds.has(e.to); });
+    if (cutIds) {
+      graph.nodes = graph.nodes.filter(function(n){ return !cutIds.has(n.id); });
+      graph.edges = graph.edges.filter(function(e){ return !cutIds.has(e.from) && !cutIds.has(e.to); });
+    }
     var r = wrap.getBoundingClientRect();
     var cx = (r.width / 2 - view.x) / view.scale;
     var cy = (r.height / 2 - view.y) / view.scale;
@@ -1450,16 +1461,18 @@
       graph.nodes.push({ id: newId, type: n.type, label: n.label, notes: n.notes,
                          x: Math.round(n.x + dx), y: Math.round(n.y + dy), w: n.w, h: n.h });
     });
-    clipboard.edges.forEach(function(e) {
-      graph.edges.push({ id: uid(), from: idMap[e.from], to: idMap[e.to], label: e.label });
-    });
-    clipboard.extEdges.forEach(function(e) {
-      var newFrom = idMap[e.from] || e.from;
-      var newTo   = idMap[e.to]   || e.to;
-      if (getNode(newFrom) && getNode(newTo)) {
-        graph.edges.push({ id: uid(), from: newFrom, to: newTo, label: e.label });
-      }
-    });
+    if (withEdges !== false) {
+      clipboard.edges.forEach(function(e) {
+        graph.edges.push({ id: uid(), from: idMap[e.from], to: idMap[e.to], label: e.label });
+      });
+      clipboard.extEdges.forEach(function(e) {
+        var newFrom = idMap[e.from] || e.from;
+        var newTo   = idMap[e.to]   || e.to;
+        if (getNode(newFrom) && getNode(newTo)) {
+          graph.edges.push({ id: uid(), from: newFrom, to: newTo, label: e.label });
+        }
+      });
+    }
     sel.nodes = new Set(Object.values(idMap));
     sel.edges.clear(); clipboard = null;
     changed();
@@ -1480,8 +1493,10 @@
     if ((ev.ctrlKey || ev.metaKey) && !ev.shiftKey && ev.key.toLowerCase() === 'z') { ev.preventDefault(); undo(); }
     else if ((ev.ctrlKey || ev.metaKey) && (ev.key.toLowerCase() === 'y' || (ev.shiftKey && ev.key.toLowerCase() === 'z'))) { ev.preventDefault(); redo(); }
     else if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'd') { ev.preventDefault(); duplicateSubtree(); }
-    else if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'x') { ev.preventDefault(); cutSelection(); }
-    else if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'v') { ev.preventDefault(); pasteClipboard(); }
+    else if ((ev.ctrlKey || ev.metaKey) && !ev.shiftKey && ev.key.toLowerCase() === 'x') { ev.preventDefault(); cutSelection(); }
+    else if ((ev.ctrlKey || ev.metaKey) && !ev.shiftKey && ev.key.toLowerCase() === 'c') { ev.preventDefault(); copySelection(); }
+    else if ((ev.ctrlKey || ev.metaKey) && ev.shiftKey && ev.key.toLowerCase() === 'v') { ev.preventDefault(); pasteClipboard(false); }
+    else if ((ev.ctrlKey || ev.metaKey) && !ev.shiftKey && ev.key.toLowerCase() === 'v') { ev.preventDefault(); pasteClipboard(true); }
     else if (ev.key === 'Delete' || ev.key === 'Backspace') { ev.preventDefault(); deleteSelection(); }
   });
 
