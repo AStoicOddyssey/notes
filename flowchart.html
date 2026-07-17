@@ -133,7 +133,7 @@
   .node.link-target { outline: 2px dashed var(--green); outline-offset: 1px; }
   .node .n-type { font-size: 10px; text-transform: uppercase; letter-spacing: .05em; margin-bottom: 3px; }
   .node .n-label { font-weight: 600; word-wrap: break-word; }
-  .node .n-notes { font-size: 12px; color: var(--muted); margin-top: 4px; word-wrap: break-word; }
+  .node .n-notes { font-size: 12px; color: var(--muted); margin-top: 4px; word-wrap: break-word; white-space: pre-wrap; }
   .node.type-question { border-left-color: var(--accent); }  .node.type-question .n-type { color: var(--accent); }
   .node.type-answer   { border-left-color: var(--green);  }  .node.type-answer .n-type   { color: var(--green); }
   .node.type-outcome  { border-left-color: var(--purple); }  .node.type-outcome .n-type  { color: var(--purple); }
@@ -831,11 +831,11 @@
       el.style.left = n.x + 'px';
       el.style.top = n.y + 'px';
       if (n.w) el.style.width = n.w + 'px';
-      if (n.h) { el.style.height = n.h + 'px'; el.style.overflow = 'hidden'; }
+      if (n.h) el.style.minHeight = n.h + 'px';
       el.style.borderLeftColor = ntype ? ntype.colour : 'var(--muted)';
       var typeLabel = ntype ? ntype.name : (n.type || 'Untyped');
       var typeLabelColour = ntype ? ntype.colour : 'var(--muted)';
-      var notesPrev = n.notes ? '<div class="n-notes">' + esc(n.notes.length > 90 ? n.notes.slice(0, 90) + '…' : n.notes) + '</div>' : '';
+      var notesPrev = n.notes ? '<div class="n-notes">' + esc(n.notes) + '</div>' : '';
       el.innerHTML =
         '<div class="n-type" style="color:' + typeLabelColour + '">' + esc(typeLabel) + '</div>' +
         '<div class="n-label">' + esc(n.label || '(untitled)') + '</div>' +
@@ -1805,20 +1805,27 @@
     svgParts.push('</svg>');
     var svgStr = svgParts.join('\n');
 
+    var notesBg = vars.bg === '#0d1117' ? '#161b22' : '#f6f8fa';
     var html = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>' + (chartNameEl.value||'flowchart').replace(/</g,'&lt;') + '</title>' +
-      '<style>*{margin:0;box-sizing:border-box;}body{background:' + vars.bg + ';overflow:hidden;cursor:grab;}body.panning{cursor:grabbing;}' +
-      '#info{position:fixed;bottom:12px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.5);color:#fff;padding:4px 12px;border-radius:20px;font:12px sans-serif;pointer-events:none;}' +
+      '<style>*{margin:0;box-sizing:border-box;}html,body{height:100%;}body{background:' + vars.bg + ';overflow:hidden;display:flex;}' +
+      '#canvas{flex:1;position:relative;overflow:hidden;cursor:grab;}body.panning #canvas{cursor:grabbing;}' +
+      '#notepad{width:280px;flex:none;display:flex;flex-direction:column;border-left:1px solid ' + vars.border + ';background:' + notesBg + ';}' +
+      '#notepad h3{padding:12px 14px;font:600 13px/1 sans-serif;color:' + vars.muted + ';border-bottom:1px solid ' + vars.border + ';text-transform:uppercase;letter-spacing:.04em;}' +
+      '#notepad textarea{flex:1;background:transparent;border:0;padding:12px 14px;font:13px/1.5 sans-serif;color:' + vars.text + ';resize:none;outline:none;}' +
+      '#notepad textarea::placeholder{color:' + vars.muted + ';}' +
+      '#info{position:fixed;bottom:12px;left:calc(50% - 140px);transform:translateX(-50%);background:rgba(0,0,0,0.55);color:#fff;padding:4px 12px;border-radius:20px;font:12px sans-serif;pointer-events:none;}' +
       '</style></head><body>' +
-      '<div id="wrap" style="position:fixed;inset:0;transform-origin:0 0;">' + svgStr + '</div>' +
+      '<div id="canvas"><div id="wrap" style="position:absolute;transform-origin:0 0;">' + svgStr + '</div></div>' +
+      '<div id="notepad"><h3>Notes</h3><textarea placeholder="Add your notes here..."></textarea></div>' +
       '<div id="info">scroll: zoom &nbsp;·&nbsp; drag: pan &nbsp;·&nbsp; double-click: reset</div>' +
       '<script>' +
-      'var wrap=document.getElementById("wrap"),vx=0,vy=0,vs=1,drag=null;' +
+      'var wrap=document.getElementById("wrap"),canvas=document.getElementById("canvas"),vx=0,vy=0,vs=1,drag=null;' +
       'function apply(){wrap.style.transform="translate("+vx+"px,"+vy+"px) scale("+vs+")";}' +
-      'document.body.addEventListener("wheel",function(e){e.preventDefault();var r=document.body.getBoundingClientRect(),px=e.clientX,py=e.clientY,f=e.deltaY<0?1.1:1/1.1,ns=Math.min(4,Math.max(0.1,vs*f));vx=px-(px-vx)*(ns/vs);vy=py-(py-vy)*(ns/vs);vs=ns;apply();},{passive:false});' +
-      'document.body.addEventListener("mousedown",function(e){drag={sx:e.clientX,sy:e.clientY,ox:vx,oy:vy};document.body.classList.add("panning");});' +
+      'canvas.addEventListener("wheel",function(e){e.preventDefault();var px=e.clientX,py=e.clientY,f=e.deltaY<0?1.1:1/1.1,ns=Math.min(4,Math.max(0.1,vs*f));vx=px-(px-vx)*(ns/vs);vy=py-(py-vy)*(ns/vs);vs=ns;apply();},{passive:false});' +
+      'canvas.addEventListener("mousedown",function(e){if(e.target.tagName==="TEXTAREA")return;drag={sx:e.clientX,sy:e.clientY,ox:vx,oy:vy};document.body.classList.add("panning");});' +
       'window.addEventListener("mousemove",function(e){if(!drag)return;vx=drag.ox+(e.clientX-drag.sx);vy=drag.oy+(e.clientY-drag.sy);apply();});' +
       'window.addEventListener("mouseup",function(){drag=null;document.body.classList.remove("panning");});' +
-      'document.body.addEventListener("dblclick",function(){vx=0;vy=0;vs=1;apply();});' +
+      'canvas.addEventListener("dblclick",function(e){if(e.target.tagName==="TEXTAREA")return;vx=0;vy=0;vs=1;apply();});' +
       'apply();<\/script></body></html>';
 
     var blob = new Blob([html], { type: 'text/html' });
