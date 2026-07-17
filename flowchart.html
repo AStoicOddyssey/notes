@@ -353,7 +353,7 @@
   <button class="btn" id="btnAnalytics">Analytics</button>
   <button class="btn" id="btnExport" title="Download chart as JSON">Export JSON</button>
   <button class="btn" id="btnExportPDF" title="Export chart as PDF">Export PDF</button>
-  <button class="btn" id="btnExportSVG" title="Export chart as SVG">Export SVG</button>
+  <button class="btn" id="btnExportSVG" title="Export chart as interactive HTML">Export HTML</button>
   <button class="btn" id="btnImport" title="Import chart from JSON">Import</button>
   <button class="btn" id="btnTheme" title="Toggle theme">◐</button>
   <span id="saveStatus"></span>
@@ -1754,29 +1754,24 @@
       : { bg: '#ffffff', panel: '#f6f8fa', border: '#d0d7de', text: '#24292f', muted: '#57606a' };
 
     var svgParts = [];
-    svgParts.push('<?xml version="1.0" encoding="UTF-8"?>');
-    svgParts.push('<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"');
-    svgParts.push(' width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '">');
+    svgParts.push('<svg id="chart" xmlns="http://www.w3.org/2000/svg" width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '" style="display:block;">');
     svgParts.push('<rect width="' + W + '" height="' + H + '" fill="' + vars.bg + '"/>');
+    svgParts.push('<defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="' + vars.muted + '"/></marker></defs>');
 
     // Edges
-    svgParts.push('<defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">');
-    svgParts.push('<path d="M 0 0 L 10 5 L 0 10 z" fill="' + vars.muted + '"/></marker></defs>');
     graph.edges.forEach(function(e) {
       var geo = edgeGeometry(e);
       if (!geo) return;
       var edgeHidden = hiddenEdgeNodes.has(e.from) || hiddenEdgeNodes.has(e.to);
       var opacity = edgeHidden ? '0.15' : '1';
-      var dx = -ox, dy = -oy;
-      // translate the path d
-      var d = geo.d.replace(/(-?[\d.]+)\s+(-?[\d.]+)/g, function(m, x, y) {
-        return (parseFloat(x)+dx) + ' ' + (parseFloat(y)+dy);
+      var d = geo.d.replace(/(-?[\d.]+) (-?[\d.]+)/g, function(m, x, y) {
+        return (parseFloat(x)-ox) + ' ' + (parseFloat(y)-oy);
       });
       svgParts.push('<path d="' + d + '" fill="none" stroke="' + vars.muted + '" stroke-width="1.6" marker-end="url(#arr)" opacity="' + opacity + '"/>');
       if (e.label) {
         var mid = { x: geo.mid.x - ox, y: geo.mid.y - oy };
-        svgParts.push('<rect x="' + (mid.x-20) + '" y="' + (mid.y-8) + '" width="40" height="16" rx="3" fill="' + vars.panel + '" stroke="' + vars.border + '" stroke-width="1"/>');
-        svgParts.push('<text x="' + mid.x + '" y="' + (mid.y+4) + '" text-anchor="middle" font-size="11" fill="' + vars.text + '" font-family="sans-serif">' + e.label.replace(/</g,'&lt;') + '</text>');
+        svgParts.push('<rect x="' + (mid.x-24) + '" y="' + (mid.y-9) + '" width="48" height="18" rx="3" fill="' + vars.panel + '" stroke="' + vars.border + '" stroke-width="1"/>');
+        svgParts.push('<text x="' + mid.x + '" y="' + (mid.y+5) + '" text-anchor="middle" font-size="11" fill="' + vars.text + '" font-family="sans-serif">' + e.label.replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</text>');
       }
     });
 
@@ -1785,26 +1780,51 @@
       var s = sizes[n.id] || { w: n.w || 190, h: n.h || 60 };
       var nt = (graph.types||[]).find(function(t){ return t.id===n.type; });
       var col = nt ? nt.colour : vars.muted;
-      var typeLabel = nt ? nt.name : (n.type || 'Untyped');
+      var typeLabel = nt ? nt.name : '';
       var x = n.x - ox, y = n.y - oy, w = s.w, h = s.h;
-      var cutDim = hiddenEdgeNodes.has(n.id) ? ' opacity="0.35"' : '';
-      svgParts.push('<g' + cutDim + '>');
+      var op = hiddenEdgeNodes.has(n.id) ? ' opacity="0.35"' : '';
+      svgParts.push('<g' + op + '>');
       svgParts.push('<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="8" fill="' + vars.panel + '" stroke="' + vars.border + '" stroke-width="1"/>');
-      svgParts.push('<rect x="' + x + '" y="' + y + '" width="3" height="' + h + '" rx="1" fill="' + col + '"/>');
-      svgParts.push('<text x="' + (x+12) + '" y="' + (y+18) + '" font-size="10" fill="' + col + '" font-family="sans-serif" text-transform="uppercase">' + typeLabel.replace(/</g,'&lt;') + '</text>');
-      svgParts.push('<text x="' + (x+12) + '" y="' + (y+34) + '" font-size="13" font-weight="600" fill="' + vars.text + '" font-family="sans-serif">' + (n.label||'').replace(/</g,'&lt;') + '</text>');
-      if (n.notes) {
-        svgParts.push('<text x="' + (x+12) + '" y="' + (y+50) + '" font-size="11" fill="' + vars.muted + '" font-family="sans-serif">' + n.notes.slice(0,60).replace(/</g,'&lt;') + '</text>');
-      }
+      svgParts.push('<rect x="' + x + '" y="' + y + '" width="3" height="' + h + '" rx="2" fill="' + col + '"/>');
+      if (typeLabel) svgParts.push('<text x="' + (x+12) + '" y="' + (y+16) + '" font-size="10" fill="' + col + '" font-family="sans-serif">' + typeLabel.replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</text>');
+      // wrap label text
+      var labelY = typeLabel ? y+32 : y+22;
+      var words = (n.label||'').split(' ');
+      var line = '', lineY = labelY, lineH = 16, maxW = w - 20;
+      words.forEach(function(word) {
+        var test = line ? line + ' ' + word : word;
+        if (test.length * 7.5 > maxW && line) {
+          svgParts.push('<text x="' + (x+12) + '" y="' + lineY + '" font-size="13" font-weight="600" fill="' + vars.text + '" font-family="sans-serif">' + line.replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</text>');
+          line = word; lineY += lineH;
+        } else { line = test; }
+      });
+      if (line) svgParts.push('<text x="' + (x+12) + '" y="' + lineY + '" font-size="13" font-weight="600" fill="' + vars.text + '" font-family="sans-serif">' + line.replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</text>');
+      if (n.notes) svgParts.push('<text x="' + (x+12) + '" y="' + (lineY+16) + '" font-size="11" fill="' + vars.muted + '" font-family="sans-serif">' + n.notes.slice(0,80).replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</text>');
       svgParts.push('</g>');
     });
-
     svgParts.push('</svg>');
     var svgStr = svgParts.join('\n');
-    var blob = new Blob([svgStr], { type: 'image/svg+xml' });
+
+    var html = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>' + (chartNameEl.value||'flowchart').replace(/</g,'&lt;') + '</title>' +
+      '<style>*{margin:0;box-sizing:border-box;}body{background:' + vars.bg + ';overflow:hidden;cursor:grab;}body.panning{cursor:grabbing;}' +
+      '#info{position:fixed;bottom:12px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.5);color:#fff;padding:4px 12px;border-radius:20px;font:12px sans-serif;pointer-events:none;}' +
+      '</style></head><body>' +
+      '<div id="wrap" style="position:fixed;inset:0;transform-origin:0 0;">' + svgStr + '</div>' +
+      '<div id="info">scroll: zoom &nbsp;·&nbsp; drag: pan &nbsp;·&nbsp; double-click: reset</div>' +
+      '<script>' +
+      'var wrap=document.getElementById("wrap"),vx=0,vy=0,vs=1,drag=null;' +
+      'function apply(){wrap.style.transform="translate("+vx+"px,"+vy+"px) scale("+vs+")";}' +
+      'document.body.addEventListener("wheel",function(e){e.preventDefault();var r=document.body.getBoundingClientRect(),px=e.clientX,py=e.clientY,f=e.deltaY<0?1.1:1/1.1,ns=Math.min(4,Math.max(0.1,vs*f));vx=px-(px-vx)*(ns/vs);vy=py-(py-vy)*(ns/vs);vs=ns;apply();},{passive:false});' +
+      'document.body.addEventListener("mousedown",function(e){drag={sx:e.clientX,sy:e.clientY,ox:vx,oy:vy};document.body.classList.add("panning");});' +
+      'window.addEventListener("mousemove",function(e){if(!drag)return;vx=drag.ox+(e.clientX-drag.sx);vy=drag.oy+(e.clientY-drag.sy);apply();});' +
+      'window.addEventListener("mouseup",function(){drag=null;document.body.classList.remove("panning");});' +
+      'document.body.addEventListener("dblclick",function(){vx=0;vy=0;vs=1;apply();});' +
+      'apply();<\/script></body></html>';
+
+    var blob = new Blob([html], { type: 'text/html' });
     var a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = (chartNameEl.value || 'flowchart').replace(/[^\w\- ]+/g,'').trim() + '.svg';
+    a.download = (chartNameEl.value || 'flowchart').replace(/[^\w\- ]+/g,'').trim() + '.html';
     a.click();
     URL.revokeObjectURL(a.href);
   });
