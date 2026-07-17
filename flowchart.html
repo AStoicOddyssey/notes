@@ -353,6 +353,7 @@
   <button class="btn" id="btnAnalytics">Analytics</button>
   <button class="btn" id="btnExport" title="Download chart as JSON">Export JSON</button>
   <button class="btn" id="btnExportPDF" title="Export chart as PDF">Export PDF</button>
+  <button class="btn" id="btnExportSVG" title="Export chart as SVG">Export SVG</button>
   <button class="btn" id="btnImport" title="Import chart from JSON">Import</button>
   <button class="btn" id="btnTheme" title="Toggle theme">◐</button>
   <span id="saveStatus"></span>
@@ -1735,6 +1736,78 @@
   }
   $('pdfDark').addEventListener('click', function() { doExportPDF('dark'); });
   $('pdfLight').addEventListener('click', function() { doExportPDF('light'); });
+
+  $('btnExportSVG').addEventListener('click', function() {
+    if (!currentId || !graph.nodes.length) return;
+    var pad = 60;
+    var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    graph.nodes.forEach(function(n) {
+      var s = sizes[n.id] || { w: n.w || 190, h: n.h || 60 };
+      minX = Math.min(minX, n.x); minY = Math.min(minY, n.y);
+      maxX = Math.max(maxX, n.x + s.w); maxY = Math.max(maxY, n.y + s.h);
+    });
+    var W = maxX - minX + pad * 2, H = maxY - minY + pad * 2;
+    var ox = minX - pad, oy = minY - pad;
+    var theme = document.documentElement.getAttribute('data-theme');
+    var vars = theme === 'dark'
+      ? { bg: '#0d1117', panel: '#161b22', border: '#30363d', text: '#c9d1d9', muted: '#8b949e' }
+      : { bg: '#ffffff', panel: '#f6f8fa', border: '#d0d7de', text: '#24292f', muted: '#57606a' };
+
+    var svgParts = [];
+    svgParts.push('<?xml version="1.0" encoding="UTF-8"?>');
+    svgParts.push('<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"');
+    svgParts.push(' width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '">');
+    svgParts.push('<rect width="' + W + '" height="' + H + '" fill="' + vars.bg + '"/>');
+
+    // Edges
+    svgParts.push('<defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">');
+    svgParts.push('<path d="M 0 0 L 10 5 L 0 10 z" fill="' + vars.muted + '"/></marker></defs>');
+    graph.edges.forEach(function(e) {
+      var geo = edgeGeometry(e);
+      if (!geo) return;
+      var edgeHidden = hiddenEdgeNodes.has(e.from) || hiddenEdgeNodes.has(e.to);
+      var opacity = edgeHidden ? '0.15' : '1';
+      var dx = -ox, dy = -oy;
+      // translate the path d
+      var d = geo.d.replace(/(-?[\d.]+)\s+(-?[\d.]+)/g, function(m, x, y) {
+        return (parseFloat(x)+dx) + ' ' + (parseFloat(y)+dy);
+      });
+      svgParts.push('<path d="' + d + '" fill="none" stroke="' + vars.muted + '" stroke-width="1.6" marker-end="url(#arr)" opacity="' + opacity + '"/>');
+      if (e.label) {
+        var mid = { x: geo.mid.x - ox, y: geo.mid.y - oy };
+        svgParts.push('<rect x="' + (mid.x-20) + '" y="' + (mid.y-8) + '" width="40" height="16" rx="3" fill="' + vars.panel + '" stroke="' + vars.border + '" stroke-width="1"/>');
+        svgParts.push('<text x="' + mid.x + '" y="' + (mid.y+4) + '" text-anchor="middle" font-size="11" fill="' + vars.text + '" font-family="sans-serif">' + e.label.replace(/</g,'&lt;') + '</text>');
+      }
+    });
+
+    // Nodes
+    graph.nodes.forEach(function(n) {
+      var s = sizes[n.id] || { w: n.w || 190, h: n.h || 60 };
+      var nt = (graph.types||[]).find(function(t){ return t.id===n.type; });
+      var col = nt ? nt.colour : vars.muted;
+      var typeLabel = nt ? nt.name : (n.type || 'Untyped');
+      var x = n.x - ox, y = n.y - oy, w = s.w, h = s.h;
+      var cutDim = hiddenEdgeNodes.has(n.id) ? ' opacity="0.35"' : '';
+      svgParts.push('<g' + cutDim + '>');
+      svgParts.push('<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="8" fill="' + vars.panel + '" stroke="' + vars.border + '" stroke-width="1"/>');
+      svgParts.push('<rect x="' + x + '" y="' + y + '" width="3" height="' + h + '" rx="1" fill="' + col + '"/>');
+      svgParts.push('<text x="' + (x+12) + '" y="' + (y+18) + '" font-size="10" fill="' + col + '" font-family="sans-serif" text-transform="uppercase">' + typeLabel.replace(/</g,'&lt;') + '</text>');
+      svgParts.push('<text x="' + (x+12) + '" y="' + (y+34) + '" font-size="13" font-weight="600" fill="' + vars.text + '" font-family="sans-serif">' + (n.label||'').replace(/</g,'&lt;') + '</text>');
+      if (n.notes) {
+        svgParts.push('<text x="' + (x+12) + '" y="' + (y+50) + '" font-size="11" fill="' + vars.muted + '" font-family="sans-serif">' + n.notes.slice(0,60).replace(/</g,'&lt;') + '</text>');
+      }
+      svgParts.push('</g>');
+    });
+
+    svgParts.push('</svg>');
+    var svgStr = svgParts.join('\n');
+    var blob = new Blob([svgStr], { type: 'image/svg+xml' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = (chartNameEl.value || 'flowchart').replace(/[^\w\- ]+/g,'').trim() + '.svg';
+    a.click();
+    URL.revokeObjectURL(a.href);
+  });
 
   /* ── Export / import ───────────────────────────────── */
   $('btnExport').addEventListener('click', function () {
