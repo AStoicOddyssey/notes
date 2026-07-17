@@ -1781,25 +1781,22 @@
       var nt = (graph.types||[]).find(function(t){ return t.id===n.type; });
       var col = nt ? nt.colour : vars.muted;
       var typeLabel = nt ? nt.name : '';
-      var x = n.x - ox, y = n.y - oy, w = s.w, h = s.h;
+      var estLines = Math.ceil((n.label||'').length / Math.max(1, Math.floor((s.w-20)/7.5)));
+      var estH = (typeLabel ? 16 : 0) + estLines * 17 + (n.notes ? Math.ceil(n.notes.length / Math.max(1, Math.floor((s.w-20)/6.5))) * 15 + 8 : 0) + 24;
+      var x = n.x - ox, y = n.y - oy, w = s.w, h = Math.max(s.h, estH);
       var op = hiddenEdgeNodes.has(n.id) ? ' opacity="0.35"' : '';
+      var safeLabel = (n.label||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+      var safeNotes = (n.notes||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+      var safeType = typeLabel.replace(/&/g,'&amp;').replace(/</g,'&lt;');
       svgParts.push('<g' + op + '>');
       svgParts.push('<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="8" fill="' + vars.panel + '" stroke="' + vars.border + '" stroke-width="1"/>');
       svgParts.push('<rect x="' + x + '" y="' + y + '" width="3" height="' + h + '" rx="2" fill="' + col + '"/>');
-      if (typeLabel) svgParts.push('<text x="' + (x+12) + '" y="' + (y+16) + '" font-size="10" fill="' + col + '" font-family="sans-serif">' + typeLabel.replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</text>');
-      // wrap label text
-      var labelY = typeLabel ? y+32 : y+22;
-      var words = (n.label||'').split(' ');
-      var line = '', lineY = labelY, lineH = 16, maxW = w - 20;
-      words.forEach(function(word) {
-        var test = line ? line + ' ' + word : word;
-        if (test.length * 7.5 > maxW && line) {
-          svgParts.push('<text x="' + (x+12) + '" y="' + lineY + '" font-size="13" font-weight="600" fill="' + vars.text + '" font-family="sans-serif">' + line.replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</text>');
-          line = word; lineY += lineH;
-        } else { line = test; }
-      });
-      if (line) svgParts.push('<text x="' + (x+12) + '" y="' + lineY + '" font-size="13" font-weight="600" fill="' + vars.text + '" font-family="sans-serif">' + line.replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</text>');
-      if (n.notes) svgParts.push('<text x="' + (x+12) + '" y="' + (lineY+16) + '" font-size="11" fill="' + vars.muted + '" font-family="sans-serif">' + n.notes.slice(0,80).replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</text>');
+      svgParts.push('<foreignObject x="' + (x+3) + '" y="' + y + '" width="' + (w-3) + '" height="' + h + '">');
+      svgParts.push('<div xmlns="http://www.w3.org/1999/xhtml" style="padding:8px 8px 8px 9px;font-family:sans-serif;height:100%;box-sizing:border-box;overflow:hidden;">');
+      if (safeType) svgParts.push('<div style="font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:' + col + ';margin-bottom:3px;">' + safeType + '</div>');
+      svgParts.push('<div style="font-size:13px;font-weight:600;color:' + vars.text + ';word-wrap:break-word;white-space:pre-wrap;">' + safeLabel + '</div>');
+      if (safeNotes) svgParts.push('<div style="font-size:11px;color:' + vars.muted + ';margin-top:4px;word-wrap:break-word;white-space:pre-wrap;">' + safeNotes + '</div>');
+      svgParts.push('</div></foreignObject>');
       svgParts.push('</g>');
     });
     svgParts.push('</svg>');
