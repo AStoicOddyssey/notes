@@ -1861,7 +1861,7 @@
         if (!g || !Array.isArray(g.edges)) throw new Error('bad shape');
         if (!confirm('Replace the current chart contents with the imported file?')) return;
         beginChange();
-        graph = { nodes: g.nodes, edges: g.edges };
+        graph = { nodes: g.nodes, edges: g.edges, types: g.types || [] };
         sel.nodes.clear(); sel.edges.clear();
         changed();
         fitView();
