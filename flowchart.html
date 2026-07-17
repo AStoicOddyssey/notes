@@ -333,6 +333,8 @@
   }
   [hidden] { display: none !important; }
 </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
 <body>
 
@@ -349,7 +351,8 @@
   <button class="btn" id="btnAutoLayout" title="Auto-arrange nodes top-down">Auto-layout</button>
   <button class="btn" id="btnTypes">Types</button>
   <button class="btn" id="btnAnalytics">Analytics</button>
-  <button class="btn" id="btnExport" title="Download chart as JSON">Export</button>
+  <button class="btn" id="btnExport" title="Download chart as JSON">Export JSON</button>
+  <button class="btn" id="btnExportPDF" title="Export chart as PDF">Export PDF</button>
   <button class="btn" id="btnImport" title="Import chart from JSON">Import</button>
   <button class="btn" id="btnTheme" title="Toggle theme">◐</button>
   <span id="saveStatus"></span>
@@ -425,6 +428,19 @@
   </main>
 </div>
 
+<div id="pdfModal" hidden style="position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:60;">
+  <div style="background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:20px;width:300px;box-shadow:var(--shadow);">
+    <h3 style="margin:0 0 14px;font-size:15px;">Export as PDF</h3>
+    <p style="color:var(--muted);font-size:13px;margin:0 0 14px;">Choose background theme:</p>
+    <div style="display:flex;gap:8px;margin-bottom:16px;">
+      <button class="btn" id="pdfDark" style="flex:1;">Dark</button>
+      <button class="btn" id="pdfLight" style="flex:1;">Light</button>
+    </div>
+    <div style="display:flex;justify-content:flex-end;">
+      <button class="btn" id="pdfCancel">Cancel</button>
+    </div>
+  </div>
+</div>
 <div id="overlay" hidden>
   <div class="modal" id="nodeModal" hidden>
     <h3 id="nodeModalTitle">Edit node</h3>
@@ -1658,6 +1674,67 @@
     html += '</div>';
     analyticsEl.innerHTML = html;
   }
+
+  /* ── PDF Export ─────────────────────────────────────── */
+  $('btnExportPDF').addEventListener('click', function() {
+    if (!currentId || !graph.nodes.length) return;
+    $('pdfModal').hidden = false;
+  });
+  $('pdfCancel').addEventListener('click', function() { $('pdfModal').hidden = true; });
+
+  function doExportPDF(theme) {
+    $('pdfModal').hidden = true;
+    var prevTheme = document.documentElement.getAttribute('data-theme');
+    var prevView = { x: view.x, y: view.y, scale: view.scale };
+    document.documentElement.setAttribute('data-theme', theme);
+    var pad = 40;
+    var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    graph.nodes.forEach(function(n) {
+      var s = sizes[n.id] || { w: n.w || 190, h: n.h || 60 };
+      minX = Math.min(minX, n.x); minY = Math.min(minY, n.y);
+      maxX = Math.max(maxX, n.x + s.w); maxY = Math.max(maxY, n.y + s.h);
+    });
+    var cw = wrap.offsetWidth, ch = wrap.offsetHeight;
+    var bw = maxX - minX + pad * 2, bh = maxY - minY + pad * 2;
+    var sc = Math.min(cw / bw, ch / bh, 1.5);
+    view.x = (cw - bw * sc) / 2 - minX * sc + pad * sc;
+    view.y = (ch - bh * sc) / 2 - minY * sc + pad * sc;
+    view.scale = sc;
+    applyView();
+    var toHide = ['#sidebar', '#appSidebar', 'header', '#hintBar', '#zoomCtl', '#ctxPanel', '#analytics', '#typesPanel'];
+    var hidden = toHide.map(function(s) {
+      var el = document.querySelector(s);
+      var prev = el ? el.style.display : null;
+      if (el) el.style.display = 'none';
+      return { el: el, prev: prev };
+    });
+    wrap.style.position = 'fixed';
+    wrap.style.inset = '0';
+    setTimeout(function() {
+      html2canvas(wrap, {
+        backgroundColor: theme === 'dark' ? '#0d1117' : '#ffffff',
+        scale: 2, useCORS: true, logging: false
+      }).then(function(canvas) {
+        var imgData = canvas.toDataURL('image/png');
+        var pdf = new window.jspdf.jsPDF({
+          orientation: canvas.width > canvas.height ? 'landscape' : 'portrait',
+          unit: 'px',
+          format: [canvas.width / 2, canvas.height / 2]
+        });
+        pdf.addImage(imgData, 'PNG', 0, 0, canvas.width / 2, canvas.height / 2);
+        pdf.save((chartNameEl.value || 'flowchart').replace(/[^\w\- ]+/g,'').trim() + '.pdf');
+      }).finally(function() {
+        hidden.forEach(function(h) { if (h.el) h.el.style.display = h.prev; });
+        wrap.style.position = '';
+        wrap.style.inset = '';
+        document.documentElement.setAttribute('data-theme', prevTheme);
+        view.x = prevView.x; view.y = prevView.y; view.scale = prevView.scale;
+        applyView();
+      });
+    }, 150);
+  }
+  $('pdfDark').addEventListener('click', function() { doExportPDF('dark'); });
+  $('pdfLight').addEventListener('click', function() { doExportPDF('light'); });
 
   /* ── Export / import ───────────────────────────────── */
   $('btnExport').addEventListener('click', function () {
