@@ -96,6 +96,28 @@
     font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em;
   }
   #chartList { overflow-y: auto; flex: 1; padding: 6px; }
+  .folder { margin-bottom: 2px; }
+  .folder-head {
+    display: flex; align-items: center; gap: 6px; padding: 7px 8px;
+    border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600;
+    color: var(--text);
+  }
+  .folder-head:hover { background: var(--panel2); }
+  .folder-head.drag-over { background: var(--panel2); box-shadow: inset 0 0 0 1px var(--accent); }
+  .folder-caret { display: inline-block; width: 10px; color: var(--muted); transition: transform .12s; flex: none; }
+  .folder.open .folder-caret { transform: rotate(90deg); }
+  .folder-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .folder-name-input {
+    flex: 1; background: var(--bg); border: 1px solid var(--accent); border-radius: 4px;
+    padding: 2px 5px; color: var(--text); font: inherit; font-weight: 600;
+  }
+  .folder-del { visibility: hidden; background: none; border: 0; color: var(--muted); cursor: pointer; padding: 0 3px; font-size: 13px; }
+  .folder-head:hover .folder-del { visibility: visible; }
+  .folder-del:hover { color: var(--red); }
+  .folder-body { padding-left: 14px; }
+  .folder:not(.open) .folder-body { display: none; }
+  .chart-item.dragging { opacity: 0.4; }
+  #uncategorised.drag-over { box-shadow: inset 0 0 0 1px var(--accent); border-radius: 6px; }
   .chart-item {
     padding: 7px 9px; border-radius: 6px; cursor: pointer;
     display: flex; align-items: center; gap: 8px;
@@ -331,6 +353,18 @@
     position: absolute; border: 1px dashed var(--accent);
     background: rgba(88,166,255,0.08); pointer-events: none; z-index: 10;
   }
+  /* Collapsible sidebars */
+  #appSidebar.collapsed, #sidebar.collapsed { display: none; }
+  .sb-toggle {
+    position: absolute; top: 50%; transform: translateY(-50%);
+    width: 18px; height: 44px; z-index: 15;
+    background: var(--panel); border: 1px solid var(--border);
+    color: var(--muted); cursor: pointer; padding: 0;
+    display: flex; align-items: center; justify-content: center; font-size: 12px;
+  }
+  .sb-toggle:hover { color: var(--accent); border-color: var(--accent); }
+  .sb-toggle { border-left: 0; border-radius: 0 6px 6px 0; }
+
   [hidden] { display: none !important; }
 </style>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
@@ -359,7 +393,8 @@
   <span id="saveStatus"></span>
 </header>
 
-<div class="layout">
+<div class="layout" style="position:relative;">
+  <button class="sb-toggle" id="toggleApp" title="Toggle sidebar">«</button>
   <aside id="appSidebar">
     <div class="app-brand">Notes</div>
     <nav class="app-nav">
@@ -376,13 +411,17 @@
   </aside>
 
   <aside id="sidebar">
-    <div class="side-head">
+    <div class="side-head" style="flex-wrap:wrap;gap:4px;">
       <span>My charts</span>
-      <button class="btn" id="btnNewChart" style="padding:2px 8px;">＋ New</button>
+      <div style="display:flex;gap:4px;">
+        <button class="btn" id="btnNewFolder" style="padding:2px 7px;">＋ Folder</button>
+        <button class="btn" id="btnNewChart" style="padding:2px 7px;">＋ Flowchart</button>
+      </div>
     </div>
     <div id="chartList"></div>
   </aside>
 
+  <button class="sb-toggle" id="toggleCharts" title="Toggle chart list">«</button>
   <main id="main">
     <div id="canvasWrap">
       <div id="world">
@@ -483,7 +522,9 @@
   var API = '/api/flowcharts';
   var UNDO_CAP = 100;
 
-  var charts = [];
+  var charts = [];              // [{id, name, updated_at, folder_id}]
+  var folders = [];             // [{id, name, created_at}]
+  var openFolders = new Set();  // folder ids currently expanded (session only)
   var currentId = null;
   // graph.types: [{id,name,colour}]; node.type = type id
   var graph = { nodes: [], edges: [], types: [] };
@@ -952,40 +993,171 @@
   }
 
   /* ── Chart list ────────────────────────────────────── */
+  function chartRowEl(c) {
+    var el = document.createElement('div');
+    el.className = 'chart-item' + (c.id === currentId ? ' active' : '');
+    el.draggable = true;
+    el.dataset.chartId = c.id;
+    el.innerHTML =
+      '<span class="ci-name">' + esc(c.name) + '</span>' +
+      '<span class="ci-date">' + new Date(c.updated_at).toLocaleDateString() + '</span>' +
+      '<button class="ci-del" title="Delete chart">\u2715</button>';
+    el.addEventListener('click', function (ev) {
+      if (ev.target.classList.contains('ci-del')) return;
+      if (c.id !== currentId) openChart(c.id);
+    });
+    el.querySelector('.ci-del').addEventListener('click', function () {
+      if (!confirm('Delete "' + c.name + '"? This cannot be undone.')) return;
+      fetch(API + '?id=' + encodeURIComponent(c.id), { method: 'DELETE', credentials: 'same-origin' })
+        .then(function (r) {
+          if (!r.ok) throw new Error();
+          charts = charts.filter(function (x) { return x.id !== c.id; });
+          if (currentId === c.id) {
+            currentId = null;
+            graph = { nodes: [], edges: [], types: [] };
+            if (charts.length) openChart(charts[0].id);
+            else { chartNameEl.value = ''; chartNameEl.disabled = true; render(); renderChartList(); setStatus(''); }
+          } else renderChartList();
+        })
+        .catch(function () { alert('Delete failed.'); });
+    });
+    // drag to move between folders
+    el.addEventListener('dragstart', function (ev) {
+      el.classList.add('dragging');
+      ev.dataTransfer.setData('text/plain', c.id);
+      ev.dataTransfer.effectAllowed = 'move';
+    });
+    el.addEventListener('dragend', function () { el.classList.remove('dragging'); });
+    return el;
+  }
+
+  function moveChartToFolder(chartId, folderId) {
+    var c = charts.find(function (x) { return x.id === chartId; });
+    if (!c) return;
+    if ((c.folder_id || null) === (folderId || null)) return;
+    c.folder_id = folderId || null;
+    renderChartList();
+    fetch(API, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify({ id: chartId, folder_id: folderId || null })
+    }).catch(function () { /* silent; will resync on reload */ });
+  }
+
   function renderChartList() {
     chartListEl.innerHTML = '';
-    if (!charts.length) {
+    if (!charts.length && !folders.length) {
       chartListEl.innerHTML = '<div style="padding:12px;color:var(--muted);font-size:13px;">No charts yet — create one to begin.</div>';
       return;
     }
-    charts.forEach(function (c) {
-      var el = document.createElement('div');
-      el.className = 'chart-item' + (c.id === currentId ? ' active' : '');
-      el.innerHTML =
-        '<span class="ci-name">' + esc(c.name) + '</span>' +
-        '<span class="ci-date">' + new Date(c.updated_at).toLocaleDateString() + '</span>' +
-        '<button class="ci-del" title="Delete chart">✕</button>';
-      el.addEventListener('click', function (ev) {
-        if (ev.target.classList.contains('ci-del')) return;
-        if (c.id !== currentId) openChart(c.id);
+
+    // Folders first
+    folders.forEach(function (f) {
+      var wrap = document.createElement('div');
+      wrap.className = 'folder' + (openFolders.has(f.id) ? ' open' : '');
+
+      var head = document.createElement('div');
+      head.className = 'folder-head';
+      head.innerHTML =
+        '<span class="folder-caret">\u25b6</span>' +
+        '<span class="folder-name">' + esc(f.name) + '</span>' +
+        '<button class="folder-del" title="Delete folder">\u2715</button>';
+      head.addEventListener('click', function (ev) {
+        if (ev.target.classList.contains('folder-del')) return;
+        if (openFolders.has(f.id)) openFolders.delete(f.id); else openFolders.add(f.id);
+        renderChartList();
       });
-      el.querySelector('.ci-del').addEventListener('click', function () {
-        if (!confirm('Delete "' + c.name + '"? This cannot be undone.')) return;
-        fetch(API + '?id=' + encodeURIComponent(c.id), { method: 'DELETE', credentials: 'same-origin' })
-          .then(function (r) {
-            if (!r.ok) throw new Error();
-            charts = charts.filter(function (x) { return x.id !== c.id; });
-            if (currentId === c.id) {
-              currentId = null;
-              graph = { nodes: [], edges: [], types: [] };
-              if (charts.length) openChart(charts[0].id);
-              else { chartNameEl.value = ''; chartNameEl.disabled = true; render(); renderChartList(); setStatus(''); }
-            } else renderChartList();
-          })
-          .catch(function () { alert('Delete failed.'); });
+      // rename on double-click
+      head.querySelector('.folder-name').addEventListener('dblclick', function (ev) {
+        ev.stopPropagation();
+        var input = document.createElement('input');
+        input.className = 'folder-name-input';
+        input.value = f.name;
+        var nameSpan = head.querySelector('.folder-name');
+        head.replaceChild(input, nameSpan);
+        input.focus(); input.select();
+        function commit() {
+          var v = input.value.trim() || f.name;
+          f.name = v;
+          fetch(API + '?resource=folders', {
+            method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin',
+            body: JSON.stringify({ id: f.id, name: v })
+          }).catch(function(){});
+          renderChartList();
+        }
+        input.addEventListener('blur', commit);
+        input.addEventListener('keydown', function (e) {
+          if (e.key === 'Enter') input.blur();
+          if (e.key === 'Escape') { input.value = f.name; input.blur(); }
+        });
       });
-      chartListEl.appendChild(el);
+      // delete folder
+      head.querySelector('.folder-del').addEventListener('click', function (ev) {
+        ev.stopPropagation();
+        var choice = prompt('Delete folder "' + f.name + '"?\n\nType:\n  1 = delete folder only (charts become uncategorised)\n  2 = delete folder AND all charts inside', '1');
+        if (choice === null) return;
+        var mode = choice.trim() === '2' ? 'contents' : 'folder';
+        fetch(API + '?resource=folders&id=' + encodeURIComponent(f.id) + '&mode=' + mode, {
+          method: 'DELETE', credentials: 'same-origin'
+        }).then(function (r) {
+          if (!r.ok) throw new Error();
+          folders = folders.filter(function (x) { return x.id !== f.id; });
+          if (mode === 'contents') {
+            var deleted = charts.filter(function (c) { return c.folder_id === f.id; }).map(function(c){return c.id;});
+            charts = charts.filter(function (c) { return c.folder_id !== f.id; });
+            if (deleted.indexOf(currentId) !== -1) {
+              currentId = null; graph = { nodes: [], edges: [], types: [] };
+              if (charts.length) return openChart(charts[0].id);
+              chartNameEl.value = ''; chartNameEl.disabled = true; render(); setStatus('');
+            }
+          } else {
+            charts.forEach(function (c) { if (c.folder_id === f.id) c.folder_id = null; });
+          }
+          renderChartList();
+        }).catch(function () { alert('Could not delete folder.'); });
+      });
+      // drop target
+      head.addEventListener('dragover', function (ev) { ev.preventDefault(); head.classList.add('drag-over'); });
+      head.addEventListener('dragleave', function () { head.classList.remove('drag-over'); });
+      head.addEventListener('drop', function (ev) {
+        ev.preventDefault(); head.classList.remove('drag-over');
+        var chartId = ev.dataTransfer.getData('text/plain');
+        openFolders.add(f.id);
+        moveChartToFolder(chartId, f.id);
+      });
+
+      wrap.appendChild(head);
+
+      var body = document.createElement('div');
+      body.className = 'folder-body';
+      var inFolder = charts.filter(function (c) { return c.folder_id === f.id; });
+      if (!inFolder.length) {
+        var empty = document.createElement('div');
+        empty.style.cssText = 'padding:5px 8px;color:var(--muted);font-size:12px;font-style:italic;';
+        empty.textContent = 'empty';
+        body.appendChild(empty);
+      } else {
+        inFolder.forEach(function (c) { body.appendChild(chartRowEl(c)); });
+      }
+      wrap.appendChild(body);
+      chartListEl.appendChild(wrap);
     });
+
+    // Uncategorised charts below
+    var uncat = charts.filter(function (c) { return !c.folder_id; });
+    var uncatWrap = document.createElement('div');
+    uncatWrap.id = 'uncategorised';
+    uncat.forEach(function (c) { uncatWrap.appendChild(chartRowEl(c)); });
+    // uncategorised is a drop target to pull charts out of folders
+    uncatWrap.addEventListener('dragover', function (ev) { ev.preventDefault(); uncatWrap.classList.add('drag-over'); });
+    uncatWrap.addEventListener('dragleave', function () { uncatWrap.classList.remove('drag-over'); });
+    uncatWrap.addEventListener('drop', function (ev) {
+      ev.preventDefault(); uncatWrap.classList.remove('drag-over');
+      var chartId = ev.dataTransfer.getData('text/plain');
+      moveChartToFolder(chartId, null);
+    });
+    chartListEl.appendChild(uncatWrap);
   }
 
   function openChart(id) {
@@ -1013,6 +1185,21 @@
       })
       .catch(function () { alert('Could not load chart.'); });
   }
+
+  $('btnNewFolder').addEventListener('click', function () {
+    var name = prompt('Folder name:', 'New folder');
+    if (name === null) return;
+    fetch(API + '?resource=folders', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin',
+      body: JSON.stringify({ name: name })
+    }).then(function (r) { if (!r.ok) throw new Error(); return r.json(); })
+      .then(function (row) {
+        folders.push({ id: row.id, name: row.name, created_at: row.created_at });
+        openFolders.add(row.id);
+        renderChartList();
+      })
+      .catch(function () { alert('Could not create folder.'); });
+  });
 
   $('btnNewChart').addEventListener('click', function () {
     var name = prompt('Chart name:', 'Untitled chart');
@@ -2031,6 +2218,32 @@
 
 
   /* ── Sign out ──────────────────────────────────────── */
+  // Sidebar collapse toggles
+  (function() {
+    var appSb = $('appSidebar'), chartSb = $('sidebar');
+    var tApp = $('toggleApp'), tCharts = $('toggleCharts');
+    function positionToggles() {
+      var appW = appSb.classList.contains('collapsed') ? 0 : appSb.offsetWidth;
+      tApp.style.left = appW + 'px';
+      var chartW = chartSb.classList.contains('collapsed') ? 0 : chartSb.offsetWidth;
+      tCharts.style.left = (appW + chartW) + 'px';
+    }
+    tApp.addEventListener('click', function() {
+      appSb.classList.toggle('collapsed');
+      tApp.textContent = appSb.classList.contains('collapsed') ? '\u00bb' : '\u00ab';
+      positionToggles();
+    });
+    tCharts.addEventListener('click', function() {
+      chartSb.classList.toggle('collapsed');
+      tCharts.textContent = chartSb.classList.contains('collapsed') ? '\u00bb' : '\u00ab';
+      positionToggles();
+    });
+    positionToggles();
+    window.addEventListener('resize', positionToggles);
+    // reposition after chart list renders (widths stable)
+    setTimeout(positionToggles, 200);
+  })();
+
   $('btnSignOut').addEventListener('click', function () {
     fetch('/api/auth?action=logout', { method: 'POST', credentials: 'same-origin' })
       .then(function () { location.href = '/'; })
@@ -2046,6 +2259,11 @@
       })
       .then(function (me) {
         $('whoami').textContent = me.username;
+        return fetch(API + '?resource=folders', { credentials: 'same-origin' });
+      })
+      .then(function (r) { return r.ok ? r.json() : []; })
+      .then(function (folderList) {
+        folders = folderList || [];
         return fetch(API, { credentials: 'same-origin' });
       })
       .then(function (r) {
