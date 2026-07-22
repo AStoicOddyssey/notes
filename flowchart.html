@@ -73,6 +73,27 @@
   .btn.primary { background: var(--green); border-color: transparent; color: #fff; }
   .btn.danger:hover { border-color: var(--red); color: var(--red); }
   .btn.active { border-color: var(--accent); color: var(--accent); }
+
+  /* Topbar refinements */
+  .topbar { gap: 6px; }
+  .tb-div { width: 1px; height: 22px; background: var(--border); margin: 0 3px; flex: none; }
+  .btn-icon { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; }
+  .btn-icon svg { width: 15px; height: 15px; flex: none; }
+  .btn-sq { display: inline-flex; align-items: center; justify-content: center; padding: 6px; width: 30px; height: 30px; }
+  .btn-sq svg { width: 16px; height: 16px; }
+  .topbar svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .tb-more { position: relative; }
+  .tb-menu {
+    position: absolute; top: calc(100% + 6px); right: 0; z-index: 40;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+    box-shadow: var(--shadow); padding: 5px; min-width: 160px;
+    display: flex; flex-direction: column; gap: 2px;
+  }
+  .tb-menu-item {
+    background: none; border: 0; border-radius: 5px; text-align: left;
+    padding: 7px 10px; cursor: pointer; color: var(--text); font: inherit; white-space: nowrap;
+  }
+  .tb-menu-item:hover { background: var(--panel2); }
   .seg { display: flex; }
   .seg .btn { border-radius: 0; }
   .seg .btn:first-child { border-radius: 6px 0 0 6px; }
@@ -161,6 +182,8 @@
   }
   html[data-theme="light"] .node.sticky { background: #fff8c4; border-color: #e6d97a; }
   .node.sticky .n-sticky-text { font-size: 13px; color: var(--text); word-wrap: break-word; white-space: pre-wrap; }
+  .node.image { padding: 0; overflow: hidden; background: var(--panel2); border-left-width: 1px; }
+  .node.image img { display: block; width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
   .node.type-question { border-left-color: var(--accent); }  .node.type-question .n-type { color: var(--accent); }
   .node.type-answer   { border-left-color: var(--green);  }  .node.type-answer .n-type   { color: var(--green); }
   .node.type-outcome  { border-left-color: var(--purple); }  .node.type-outcome .n-type  { color: var(--purple); }
@@ -381,21 +404,64 @@
   <span class="brand">Flowcharts</span>
   <input id="chartName" placeholder="Chart name" autocomplete="off" disabled>
   <span class="spacer"></span>
+
+  <!-- View toggle -->
   <div class="seg">
     <button class="btn active" id="btnCanvasView">Canvas</button>
     <button class="btn" id="btnTreeView">Tree</button>
   </div>
-  <button class="btn" id="btnAddNode" title="Add node (or double-click canvas)">＋ Node</button>
-  <button class="btn" id="btnAddSticky" title="Add a sticky note">＋ Sticky</button>
-  <button class="btn" id="btnFit" title="Fit chart in view">Fit</button>
-  <button class="btn" id="btnAutoLayout" title="Auto-arrange nodes top-down">Auto-layout</button>
-  <button class="btn" id="btnTypes">Types</button>
-  <button class="btn" id="btnAnalytics">Analytics</button>
-  <button class="btn" id="btnExport" title="Download chart as JSON">Export JSON</button>
-  <button class="btn" id="btnExportPDF" title="Export chart as PDF">Export PDF</button>
-  <button class="btn" id="btnExportSVG" title="Export chart as interactive HTML">Export HTML</button>
-  <button class="btn" id="btnImport" title="Import chart from JSON">Import</button>
-  <button class="btn" id="btnTheme" title="Toggle theme">◐</button>
+
+  <span class="tb-div"></span>
+
+  <!-- Create -->
+  <button class="btn btn-icon" id="btnAddNode" title="Add node (or double-click canvas)">
+    <svg viewBox="0 0 24 24"><rect x="4" y="7" width="16" height="10" rx="2"/><line x1="12" y1="3" x2="12" y2="7"/><line x1="12" y1="17" x2="12" y2="21"/></svg><span>Node</span>
+  </button>
+  <button class="btn btn-icon" id="btnAddSticky" title="Add a sticky note">
+    <svg viewBox="0 0 24 24"><path d="M4 4h16v11l-5 5H4z"/><path d="M20 15h-5v5"/></svg><span>Sticky</span>
+  </button>
+  <button class="btn btn-icon" id="btnAddImage" title="Add an image">
+    <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.5"/><path d="M21 16l-5-5L5 20"/></svg><span>Image</span>
+  </button>
+
+  <span class="tb-div"></span>
+
+  <!-- Layout -->
+  <button class="btn btn-sq" id="btnFit" title="Fit chart in view">
+    <svg viewBox="0 0 24 24"><path d="M4 9V5a1 1 0 0 1 1-1h4M20 9V5a1 1 0 0 0-1-1h-4M4 15v4a1 1 0 0 0 1 1h4M20 15v4a1 1 0 0 1-1 1h-4"/></svg>
+  </button>
+  <button class="btn btn-icon" id="btnAutoLayout" title="Auto-arrange nodes top-down">
+    <svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="5" rx="1"/><rect x="3" y="16" width="6" height="5" rx="1"/><rect x="15" y="16" width="6" height="5" rx="1"/><path d="M12 8v4M12 12H6v4M12 12h6v4"/></svg><span>Arrange</span>
+  </button>
+
+  <span class="tb-div"></span>
+
+  <!-- Config -->
+  <button class="btn btn-icon" id="btnTypes" title="Manage node types">
+    <svg viewBox="0 0 24 24"><circle cx="7" cy="7" r="3"/><circle cx="17" cy="7" r="3"/><circle cx="7" cy="17" r="3"/><circle cx="17" cy="17" r="3"/></svg><span>Types</span>
+  </button>
+  <button class="btn btn-icon" id="btnAnalytics" title="Chart analytics">
+    <svg viewBox="0 0 24 24"><line x1="4" y1="20" x2="4" y2="12"/><line x1="10" y1="20" x2="10" y2="6"/><line x1="16" y1="20" x2="16" y2="14"/><line x1="20" y1="20" x2="20" y2="9"/></svg><span>Analytics</span>
+  </button>
+
+  <span class="tb-div"></span>
+
+  <!-- More (overflow) -->
+  <div class="tb-more">
+    <button class="btn btn-sq" id="btnMore" title="More">
+      <svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>
+    </button>
+    <div class="tb-menu" id="tbMenu" hidden>
+      <button class="tb-menu-item" id="btnExport">Export JSON</button>
+      <button class="tb-menu-item" id="btnExportPDF">Export PDF</button>
+      <button class="tb-menu-item" id="btnExportSVG">Export HTML</button>
+      <button class="tb-menu-item" id="btnImport">Import chart</button>
+    </div>
+  </div>
+
+  <button class="btn btn-sq" id="btnTheme" title="Toggle theme">
+    <svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 9 9 7 7 0 0 1-9-9z"/></svg>
+  </button>
   <span id="saveStatus"></span>
 </header>
 
@@ -524,6 +590,7 @@
   </div>
 </div>
 
+<input type="file" id="imageFile" accept="image/*" hidden>
 <input type="file" id="importFile" accept="application/json,.json" hidden>
 
 <script>
@@ -544,6 +611,7 @@
   var sel = { nodes: new Set(), edges: new Set() };
   var hl = null;
   var clipboard = null; // { nodes, edges, extEdges, cutIds }
+  var imagePasteAt = 0;
   var hiddenEdgeNodes = new Set();
   var undoStack = [], redoStack = [];
   var sizes = {};               // nodeId -> {w,h}
@@ -607,6 +675,22 @@
   $('btnTheme').addEventListener('click', function () {
     applyTheme(document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
   });
+
+  // More overflow menu
+  (function() {
+    var menu = $('tbMenu'), btn = $('btnMore');
+    btn.addEventListener('click', function (ev) {
+      ev.stopPropagation();
+      menu.hidden = !menu.hidden;
+    });
+    document.addEventListener('click', function (ev) {
+      if (!menu.hidden && !menu.contains(ev.target) && ev.target !== btn) menu.hidden = true;
+    });
+    // close menu after choosing an item
+    Array.prototype.forEach.call(menu.querySelectorAll('.tb-menu-item'), function (item) {
+      item.addEventListener('click', function () { menu.hidden = true; });
+    });
+  })();
 
   /* ── Save pipeline ─────────────────────────────────── */
   function setStatus(txt, cls) {
@@ -884,7 +968,13 @@
       el.style.top = n.y + 'px';
       if (n.w) el.style.width = n.w + 'px';
       if (n.h) el.style.minHeight = n.h + 'px';
-      if (n.sticky) {
+      if (n.image) {
+        el.className = 'node image' + (sel.nodes.has(n.id) ? ' selected' : '') + hlClass;
+        el.innerHTML =
+          '<img src="' + n.image + '" alt="">' +
+          '<div class="port" data-port="' + n.id + '" title="Drag to connect"></div>' +
+          '<div class="resize-handle" data-resize="' + n.id + '"></div>';
+      } else if (n.sticky) {
         el.className = 'node sticky' + (sel.nodes.has(n.id) ? ' selected' : '') + hlClass;
         el.innerHTML =
           '<div class="n-sticky-text">' + esc(n.text || '') + '</div>' +
@@ -1375,6 +1465,40 @@
     if (openEditor) openNodeModal(n.id);
     return n;
   }
+  // Downscale an image dataURL so the long edge <= maxPx; returns Promise<{data,w,h}>
+  function downscaleImage(dataURL, maxPx) {
+    return new Promise(function(resolve, reject) {
+      var img = new Image();
+      img.onload = function() {
+        var w = img.width, h = img.height;
+        var scale = Math.min(1, maxPx / Math.max(w, h));
+        var nw = Math.round(w * scale), nh = Math.round(h * scale);
+        var canvas = document.createElement('canvas');
+        canvas.width = nw; canvas.height = nh;
+        var ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, nw, nh);
+        // JPEG for photos keeps size down; PNG if it has alpha is safer but bigger — use JPEG q0.85
+        var out;
+        try { out = canvas.toDataURL('image/jpeg', 0.85); }
+        catch (e) { out = dataURL; }
+        resolve({ data: out, w: nw, h: nh });
+      };
+      img.onerror = reject;
+      img.src = dataURL;
+    });
+  }
+  function createImage(dataURL, x, y) {
+    downscaleImage(dataURL, 1200).then(function(res) {
+      // display size: cap initial on-canvas size to ~320px long edge
+      var dispScale = Math.min(1, 320 / Math.max(res.w, res.h));
+      var dw = Math.round(res.w * dispScale), dh = Math.round(res.h * dispScale);
+      beginChange();
+      var n = { id: uid(), image: res.data, natW: res.w, natH: res.h,
+                x: Math.round(x - dw/2), y: Math.round(y - dh/2), w: dw, h: dh };
+      graph.nodes.push(n);
+      changed();
+    }).catch(function() { alert('Could not process image.'); });
+  }
   function deleteNodes(ids) {
     var set = new Set(ids);
     beginChange();
@@ -1509,8 +1633,16 @@
       var rdy = (ev.clientY - drag.startY) / view.scale;
       var rn = getNode(drag.id);
       if (rn) {
-        rn.w = Math.max(120, Math.round(drag.origW + rdx));
-        rn.h = Math.max(50,  Math.round(drag.origH + rdy));
+        if (rn.image && rn.natW && rn.natH) {
+          // lock aspect ratio to native
+          var aspect = rn.natW / rn.natH;
+          var newW = Math.max(60, Math.round(drag.origW + rdx));
+          rn.w = newW;
+          rn.h = Math.round(newW / aspect);
+        } else {
+          rn.w = Math.max(120, Math.round(drag.origW + rdx));
+          rn.h = Math.max(50,  Math.round(drag.origH + rdy));
+        }
         var rel = nodeLayer.querySelector('.node[data-id="' + drag.id + '"]');
         if (rel) { rel.style.width = rn.w + 'px'; rel.style.height = rn.h + 'px'; }
         renderEdges();
@@ -1612,7 +1744,12 @@
   wrap.addEventListener('dblclick', function (ev) {
     if (mode !== 'canvas' || !currentId) return;
     var nodeEl = ev.target.closest('.node');
-    if (nodeEl) { openNodeModal(nodeEl.dataset.id); return; }
+    if (nodeEl) {
+      var dblNode = getNode(nodeEl.dataset.id);
+      if (dblNode && dblNode.image) return; // images have no editor
+      openNodeModal(nodeEl.dataset.id);
+      return;
+    }
     if (ev.target.closest('#zoomCtl')) return;
     var p = toWorld(ev.clientX, ev.clientY);
     createNode(p.x - 95, p.y - 25, true);
@@ -1674,6 +1811,69 @@
     var r = wrap.getBoundingClientRect();
     var p = toWorld(r.left + r.width / 2, r.top + r.height / 2);
     createSticky(p.x - 100 + Math.random() * 30, p.y - 60 + Math.random() * 30, true);
+  });
+
+  // ＋ Image button -> file picker
+  $('btnAddImage').addEventListener('click', function () {
+    if (!currentId) return;
+    $('imageFile').click();
+  });
+  $('imageFile').addEventListener('change', function () {
+    var f = this.files[0];
+    this.value = '';
+    if (!f || !currentId) return;
+    var reader = new FileReader();
+    reader.onload = function () {
+      var r = wrap.getBoundingClientRect();
+      var p = toWorld(r.left + r.width / 2, r.top + r.height / 2);
+      createImage(reader.result, p.x, p.y);
+    };
+    reader.readAsDataURL(f);
+  });
+
+  // Paste image from clipboard (falls through to node-paste if no image)
+  window.addEventListener('paste', function (ev) {
+    if (!currentId) return;
+    var tag = (ev.target.tagName || '').toLowerCase();
+    if (tag === 'input' || tag === 'textarea') return;
+    var items = (ev.clipboardData || {}).items || [];
+    for (var i = 0; i < items.length; i++) {
+      if (items[i].type && items[i].type.indexOf('image') === 0) {
+        ev.preventDefault();
+        var file = items[i].getAsFile();
+        var reader = new FileReader();
+        reader.onload = function () {
+          var r = wrap.getBoundingClientRect();
+          var p = toWorld(r.left + r.width / 2, r.top + r.height / 2);
+          createImage(reader.result, p.x, p.y);
+        };
+        reader.readAsDataURL(file);
+        imagePasteAt = Date.now(); // suppress the node-paste keydown that follows
+        return;
+      }
+    }
+    // no image in clipboard -> let Ctrl+V node paste run (handled by keydown)
+  });
+
+  // Drag-and-drop image file onto canvas
+  wrap.addEventListener('dragover', function (ev) {
+    if (ev.dataTransfer && ev.dataTransfer.types && ev.dataTransfer.types.indexOf('Files') !== -1) {
+      ev.preventDefault();
+    }
+  });
+  wrap.addEventListener('drop', function (ev) {
+    if (!currentId) return;
+    var files = ev.dataTransfer && ev.dataTransfer.files;
+    if (!files || !files.length) return;
+    var f = files[0];
+    if (!f.type || f.type.indexOf('image') !== 0) return;
+    ev.preventDefault();
+    var reader = new FileReader();
+    reader.onload = function () {
+      var p = toWorld(ev.clientX, ev.clientY);
+      createImage(reader.result, p.x, p.y);
+    };
+    reader.readAsDataURL(f);
   });
 
   /* ── Keyboard ──────────────────────────────────────── */
@@ -1753,7 +1953,7 @@
     else if ((ev.ctrlKey || ev.metaKey) && !ev.shiftKey && ev.key.toLowerCase() === 'x') { ev.preventDefault(); cutSelection(); }
     else if ((ev.ctrlKey || ev.metaKey) && !ev.shiftKey && ev.key.toLowerCase() === 'c') { ev.preventDefault(); copySelection(); }
     else if ((ev.ctrlKey || ev.metaKey) && ev.shiftKey && ev.key.toLowerCase() === 'v') { ev.preventDefault(); pasteClipboard(false); }
-    else if ((ev.ctrlKey || ev.metaKey) && !ev.shiftKey && ev.key.toLowerCase() === 'v') { ev.preventDefault(); pasteClipboard(true); }
+    else if ((ev.ctrlKey || ev.metaKey) && !ev.shiftKey && ev.key.toLowerCase() === 'v') { ev.preventDefault(); if (Date.now() - imagePasteAt > 300) pasteClipboard(true); }
     else if (ev.key === 'Delete' || ev.key === 'Backspace') { ev.preventDefault(); deleteSelection(); }
   });
 
@@ -1791,8 +1991,8 @@
       var lbl = edgeLabel ? '<span class="t-edge-label">' + esc(edgeLabel) + ' → </span>' : '';
       return lbl +
         '<span class="t-dot type-' + n.type + '"></span>' +
-        '<strong>' + esc(n.sticky ? (n.text || 'Sticky note') : (n.label || '(untitled)')) + '</strong>' +
-        '<span class="t-type-tag">' + (n.sticky ? 'Sticky' : getTypeName(n.type)) + '</span>';
+        '<strong>' + esc(n.image ? 'Image' : (n.sticky ? (n.text || 'Sticky note') : (n.label || '(untitled)'))) + '</strong>' +
+        '<span class="t-type-tag">' + (n.image ? 'Image' : (n.sticky ? 'Sticky' : getTypeName(n.type))) + '</span>';
     }
     function build(n, edgeLabel) {
       var li = document.createElement('li');
@@ -2018,6 +2218,12 @@
     // Nodes
     graph.nodes.forEach(function(n) {
       var s = sizes[n.id] || { w: n.w || 190, h: n.h || 60 };
+      if (n.image) {
+        var ix = n.x - ox, iy = n.y - oy, iw = s.w, ih = s.h;
+        var iop = hiddenEdgeNodes.has(n.id) ? ' opacity="0.35"' : '';
+        svgParts.push('<image x="' + ix + '" y="' + iy + '" width="' + iw + '" height="' + ih + '" href="' + n.image + '" preserveAspectRatio="xMidYMid meet"' + iop + '/>');
+        return;
+      }
       if (n.sticky) {
         var sx = n.x - ox, sy = n.y - oy, sw = s.w, sh = Math.max(s.h, 60);
         var stickyBg = vars.bg === '#0d1117' ? '#4d4426' : '#fff8c4';
