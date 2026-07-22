@@ -156,6 +156,11 @@
   .node .n-type { font-size: 10px; text-transform: uppercase; letter-spacing: .05em; margin-bottom: 3px; }
   .node .n-label { font-weight: 600; word-wrap: break-word; }
   .node .n-notes { font-size: 12px; color: var(--muted); margin-top: 4px; word-wrap: break-word; white-space: pre-wrap; }
+  .node.sticky {
+    background: #4d4426; border-color: #6b5d2f; border-left-width: 1px;
+  }
+  html[data-theme="light"] .node.sticky { background: #fff8c4; border-color: #e6d97a; }
+  .node.sticky .n-sticky-text { font-size: 13px; color: var(--text); word-wrap: break-word; white-space: pre-wrap; }
   .node.type-question { border-left-color: var(--accent); }  .node.type-question .n-type { color: var(--accent); }
   .node.type-answer   { border-left-color: var(--green);  }  .node.type-answer .n-type   { color: var(--green); }
   .node.type-outcome  { border-left-color: var(--purple); }  .node.type-outcome .n-type  { color: var(--purple); }
@@ -381,6 +386,7 @@
     <button class="btn" id="btnTreeView">Tree</button>
   </div>
   <button class="btn" id="btnAddNode" title="Add node (or double-click canvas)">＋ Node</button>
+  <button class="btn" id="btnAddSticky" title="Add a sticky note">＋ Sticky</button>
   <button class="btn" id="btnFit" title="Fit chart in view">Fit</button>
   <button class="btn" id="btnAutoLayout" title="Auto-arrange nodes top-down">Auto-layout</button>
   <button class="btn" id="btnTypes">Types</button>
@@ -484,12 +490,18 @@
 <div id="overlay" hidden>
   <div class="modal" id="nodeModal" hidden>
     <h3 id="nodeModalTitle">Edit node</h3>
-    <label for="fType">Type</label>
-    <select id="fType"></select>
-    <label for="fLabel">Label</label>
-    <input type="text" id="fLabel" autocomplete="off">
-    <label for="fNotes">Notes</label>
-    <textarea id="fNotes"></textarea>
+    <div id="fNodeFields">
+      <label for="fType">Type</label>
+      <select id="fType"></select>
+      <label for="fLabel">Label</label>
+      <input type="text" id="fLabel" autocomplete="off">
+      <label for="fNotes">Notes</label>
+      <textarea id="fNotes" style="min-height:90px;"></textarea>
+    </div>
+    <div id="fStickyFields" hidden>
+      <label for="fStickyText">Sticky note text</label>
+      <textarea id="fStickyText" style="min-height:200px;"></textarea>
+    </div>
     <div class="m-actions">
       <button class="btn danger" id="fDelete">Delete</button>
       <button class="btn" id="fHide">Hide edges</button>
@@ -867,22 +879,30 @@
         else if (hl.ancestors.has(n.id)) hlClass = ' hl-ancestor';
         else if (hl.descendants.has(n.id)) hlClass = ' hl-descendant';
       }
-      el.className = 'node' + (sel.nodes.has(n.id) ? ' selected' : '') + hlClass;
       el.dataset.id = n.id;
       el.style.left = n.x + 'px';
       el.style.top = n.y + 'px';
       if (n.w) el.style.width = n.w + 'px';
       if (n.h) el.style.minHeight = n.h + 'px';
-      el.style.borderLeftColor = ntype ? ntype.colour : 'var(--muted)';
-      var typeLabel = ntype ? ntype.name : (n.type || 'Untyped');
-      var typeLabelColour = ntype ? ntype.colour : 'var(--muted)';
-      var notesPrev = n.notes ? '<div class="n-notes">' + esc(n.notes) + '</div>' : '';
-      el.innerHTML =
-        '<div class="n-type" style="color:' + typeLabelColour + '">' + esc(typeLabel) + '</div>' +
-        '<div class="n-label">' + esc(n.label || '(untitled)') + '</div>' +
-        notesPrev +
-        '<div class="port" data-port="' + n.id + '" title="Drag to connect"></div>' +
-        '<div class="resize-handle" data-resize="' + n.id + '"></div>';
+      if (n.sticky) {
+        el.className = 'node sticky' + (sel.nodes.has(n.id) ? ' selected' : '') + hlClass;
+        el.innerHTML =
+          '<div class="n-sticky-text">' + esc(n.text || '') + '</div>' +
+          '<div class="port" data-port="' + n.id + '" title="Drag to connect"></div>' +
+          '<div class="resize-handle" data-resize="' + n.id + '"></div>';
+      } else {
+        el.className = 'node' + (sel.nodes.has(n.id) ? ' selected' : '') + hlClass;
+        el.style.borderLeftColor = ntype ? ntype.colour : 'var(--muted)';
+        var typeLabel = ntype ? ntype.name : (n.type || 'Untyped');
+        var typeLabelColour = ntype ? ntype.colour : 'var(--muted)';
+        var notesPrev = n.notes ? '<div class="n-notes">' + esc(n.notes) + '</div>' : '';
+        el.innerHTML =
+          '<div class="n-type" style="color:' + typeLabelColour + '">' + esc(typeLabel) + '</div>' +
+          '<div class="n-label">' + esc(n.label || '(untitled)') + '</div>' +
+          notesPrev +
+          '<div class="port" data-port="' + n.id + '" title="Drag to connect"></div>' +
+          '<div class="resize-handle" data-resize="' + n.id + '"></div>';
+      }
       nodeLayer.appendChild(el);
     });
     // measure
@@ -1245,14 +1265,26 @@
     var n = getNode(id);
     if (!n) return;
     editingNodeId = id;
-    populateTypeDropdown(n.type);
-    $('fLabel').value = n.label || '';
-    $('fNotes').value = n.notes || '';
     var fHideBtn = $('fHide');
     fHideBtn.textContent = hiddenEdgeNodes.has(id) ? 'Show edges' : 'Hide edges';
     fHideBtn.classList.toggle('active', hiddenEdgeNodes.has(id));
-    overlay.hidden = false; nodeModal.hidden = false; edgeModal.hidden = true;
-    $('fLabel').focus(); $('fLabel').select();
+    if (n.sticky) {
+      $('fNodeFields').hidden = true;
+      $('fStickyFields').hidden = false;
+      $('nodeModalTitle').textContent = 'Edit sticky note';
+      $('fStickyText').value = n.text || '';
+      overlay.hidden = false; nodeModal.hidden = false; edgeModal.hidden = true;
+      $('fStickyText').focus(); $('fStickyText').select();
+    } else {
+      $('fNodeFields').hidden = false;
+      $('fStickyFields').hidden = true;
+      $('nodeModalTitle').textContent = 'Edit node';
+      populateTypeDropdown(n.type);
+      $('fLabel').value = n.label || '';
+      $('fNotes').value = n.notes || '';
+      overlay.hidden = false; nodeModal.hidden = false; edgeModal.hidden = true;
+      $('fLabel').focus(); $('fLabel').select();
+    }
   }
   function openEdgeModal(id) {
     var e = graph.edges.find(function (x) { return x.id === id; });
@@ -1276,13 +1308,19 @@
   $('fSave').addEventListener('click', function () {
     var n = getNode(editingNodeId);
     if (n) {
-      var tv = $('fType').value;
-      if (tv === '__new__' || !tv) { alert('Select or create a type first.'); return; }
-      beginChange();
-      n.type = tv;
-      n.label = $('fLabel').value.trim();
-      n.notes = $('fNotes').value.trim();
-      changed();
+      if (n.sticky) {
+        beginChange();
+        n.text = $('fStickyText').value;
+        changed();
+      } else {
+        var tv = $('fType').value;
+        if (tv === '__new__' || !tv) { alert('Select or create a type first.'); return; }
+        beginChange();
+        n.type = tv;
+        n.label = $('fLabel').value.trim();
+        n.notes = $('fNotes').value.trim();
+        changed();
+      }
     }
     closeModal();
   });
@@ -1324,6 +1362,14 @@
   function createNode(x, y, openEditor) {
     beginChange();
     var n = { id: uid(), type: 'question', label: 'New step', notes: '', x: Math.round(x), y: Math.round(y) };
+    graph.nodes.push(n);
+    changed();
+    if (openEditor) openNodeModal(n.id);
+    return n;
+  }
+  function createSticky(x, y, openEditor) {
+    beginChange();
+    var n = { id: uid(), sticky: true, text: 'Note', x: Math.round(x), y: Math.round(y), w: 200, h: 120 };
     graph.nodes.push(n);
     changed();
     if (openEditor) openNodeModal(n.id);
@@ -1623,6 +1669,13 @@
     createNode(p.x - 95 + Math.random() * 30, p.y - 25 + Math.random() * 30, true);
   });
 
+  $('btnAddSticky').addEventListener('click', function () {
+    if (!currentId) return;
+    var r = wrap.getBoundingClientRect();
+    var p = toWorld(r.left + r.width / 2, r.top + r.height / 2);
+    createSticky(p.x - 100 + Math.random() * 30, p.y - 60 + Math.random() * 30, true);
+  });
+
   /* ── Keyboard ──────────────────────────────────────── */
   function cutSelection() {
     if (!sel.nodes.size) return;
@@ -1738,8 +1791,8 @@
       var lbl = edgeLabel ? '<span class="t-edge-label">' + esc(edgeLabel) + ' → </span>' : '';
       return lbl +
         '<span class="t-dot type-' + n.type + '"></span>' +
-        '<strong>' + esc(n.label || '(untitled)') + '</strong>' +
-        '<span class="t-type-tag">' + getTypeName(n.type) + '</span>';
+        '<strong>' + esc(n.sticky ? (n.text || 'Sticky note') : (n.label || '(untitled)')) + '</strong>' +
+        '<span class="t-type-tag">' + (n.sticky ? 'Sticky' : getTypeName(n.type)) + '</span>';
     }
     function build(n, edgeLabel) {
       var li = document.createElement('li');
@@ -1837,7 +1890,7 @@
   function renderAnalytics() {
     var a = analyze();
     var typeCounts = {};
-    graph.nodes.forEach(function (n) { typeCounts[n.type] = (typeCounts[n.type] || 0) + 1; });
+    graph.nodes.forEach(function (n) { if (n.sticky) return; typeCounts[n.type] = (typeCounts[n.type] || 0) + 1; });
     var terminals = graph.nodes.filter(function (n) { return a.outdeg[n.id] === 0; });
 
     var html = '<h3>Overview</h3>';
@@ -1965,6 +2018,19 @@
     // Nodes
     graph.nodes.forEach(function(n) {
       var s = sizes[n.id] || { w: n.w || 190, h: n.h || 60 };
+      if (n.sticky) {
+        var sx = n.x - ox, sy = n.y - oy, sw = s.w, sh = Math.max(s.h, 60);
+        var stickyBg = vars.bg === '#0d1117' ? '#4d4426' : '#fff8c4';
+        var stickyBorder = vars.bg === '#0d1117' ? '#6b5d2f' : '#e6d97a';
+        var sop = hiddenEdgeNodes.has(n.id) ? ' opacity="0.35"' : '';
+        var safeSticky = (n.text||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+        svgParts.push('<g' + sop + '>');
+        svgParts.push('<rect x="' + sx + '" y="' + sy + '" width="' + sw + '" height="' + sh + '" rx="8" fill="' + stickyBg + '" stroke="' + stickyBorder + '" stroke-width="1"/>');
+        svgParts.push('<foreignObject x="' + sx + '" y="' + sy + '" width="' + sw + '" height="' + sh + '">');
+        svgParts.push('<div xmlns="http://www.w3.org/1999/xhtml" style="padding:8px 10px;font-family:sans-serif;font-size:13px;color:' + vars.text + ';word-wrap:break-word;white-space:pre-wrap;height:100%;box-sizing:border-box;overflow:hidden;">' + safeSticky + '</div>');
+        svgParts.push('</foreignObject></g>');
+        return;
+      }
       var nt = (graph.types||[]).find(function(t){ return t.id===n.type; });
       var col = nt ? nt.colour : vars.muted;
       var typeLabel = nt ? nt.name : '';
